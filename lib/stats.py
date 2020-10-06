@@ -2,7 +2,7 @@ from collections import defaultdict
 import numpy as np
 import json
 
-from lib.utils import Event
+from lib.utils import Event, NumpyEncoder
 
 # Class to hold stats events
 class StatsEvent(Event):

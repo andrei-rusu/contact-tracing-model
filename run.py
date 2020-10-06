@@ -272,8 +272,8 @@ class EngineDual(Engine):
                 m['totalDeath'] += 1
 
             # compute random tracing effort -> net_size - non_traceable_states = traceable_states ('S', 'E', 'I', 'Ia', 'Is')
-            m['tracingEffortRandom'] = self.args.taur * 
-                (self.args.netsize - m['totalTraced'] - m['totalHospital'] - m['totalRecovered'] - m['totalDeath'])
+            m['tracingEffortRandom'] = self.args.taur * (self.args.netsize - \
+                m['totalTraced'] - m['totalHospital'] - m['totalRecovered'] - m['totalDeath'])
             # compute active tracing effort -> we only care about traceable_states ('S', 'E', 'I', 'Ia', 'Is')
             tracingEffortAccum = 0
             for nid, state in enumerate(self.know_net.node_states):

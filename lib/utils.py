@@ -5,6 +5,7 @@ import inspect
 import re
 import pickle
 import json
+import numpy as np
 
 from sys import stdout
 from contextlib import contextmanager

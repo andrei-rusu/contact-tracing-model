@@ -15,27 +15,28 @@ cd $PBS_O_WORKDIR
 
 if [ -z "$PBS_ARRAYID" ]
 then
-    nid=0
-else
-    nid=$PBS_ARRAYID
+    PBS_ARRAYID=0
 fi
 
-newfile="data/run/counts"$PBS_ARRAYID".txt"
+newfile="data/run/simresult"$PBS_ARRAYID".txt"
 
 module load conda/4.4.0
 source activate contact
 
-python run.py 
-    --netsize 100
-    --k 10
-    --multip False
-    --model 'covid'
-    --dual True
-    --overlap .8
-    --nnets 1
-    --niters 1
-    --separate_traced False
-    --tautrange False
-    --seed 33
-    --taut .1
-    --taur .005
+python run.py \
+    --netsize 100 \
+    --k 10 \
+    --multip False \
+    --model 'covid' \
+    --dual True \
+    --overlap .8 \
+    --nnets 1 \
+    --niters 1 \
+    --separate_traced False \
+    --tautrange False \
+    --seed $PBS_ARRAYID \
+    --taut .1 \
+    --taur .005 > $newfile
+
+# Remove running artefacts from sim results
+sed -i -n '/args/,$p' $newfile

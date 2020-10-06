@@ -15,9 +15,7 @@ cd $PBS_O_WORKDIR
 
 if [ -z "$PBS_ARRAYID" ]
 then
-    nid=0
-else
-    nid=$PBS_ARRAYID
+    PBS_ARRAYID=0
 fi
 
 newfile="data/verify/counts"$PBS_ARRAYID".txt"
@@ -25,4 +23,4 @@ newfile="data/verify/counts"$PBS_ARRAYID".txt"
 module load conda/4.4.0
 source activate contact
 
-python trial.py --nid $nid > $newfile
+python verify_env.py --nid $PBS_ARRAYID > $newfile
