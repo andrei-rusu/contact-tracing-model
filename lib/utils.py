@@ -4,14 +4,20 @@ import tqdm
 import inspect
 import re
 import pickle
+import json
 
 from sys import stdout
 from contextlib import contextmanager
 from cProfile import Profile
 from pstats import Stats
 
-def get_z_for_overlap(k=10, overlap=.08):
-    return k * (1 - overlap) / (1 + overlap)
+def get_z_for_overlap(k=10, overlap=.08, include_add=False):
+    if include_add:
+        z = k * (1 - overlap) / (1 + overlap)
+        return z, z
+    else:
+        z = k * (1 - overlap)
+        return 0, z
 
 def get_overlap_for_z(k=10, z_add=5, z_rem=5):
     return (k - z_rem) / (k + z_add)
@@ -64,9 +70,19 @@ def expFactorTimesCount(net, nid, state='I', lamda=1, base=0):
         return -(math.log(random.random()) / exp_param)
     return float('inf')
 
+def expFactorTimesCountMultiState(net, nid, states=['I'], lamda=1, base=0):
+    exp_param = 0
+    for state in states:
+        exp_param += net.node_counts[nid][state]
+    exp_param = base + lamda * exp_param
+    if exp_param:
+        return -(math.log(random.random()) / exp_param)
+    return float('inf')
 
-### JSON-like class for holding up Events
 
+### Useful classes ###
+
+# JSON-like class for holding up Events
 class Event(dict):
     """
     General JSON-like class for recording information about various Events
@@ -83,6 +99,7 @@ class Event(dict):
     __delattr__ = dict.__delitem__
 
 
+# Class to use for profiling
 class Profiler(Profile):
     """ Custom Profile class with a __call__() context manager method to
         enable profiling.
@@ -104,8 +121,19 @@ class Profiler(Profile):
         stats.strip_dirs().sort_stats('cumulative', 'time')
         stats.print_stats()
         
+# Class for JSON-encoding dicts containing numpy arrays
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj) 
         
-### Hack for TQDM to allow print together with the progress line
+        
+### Hack for TQDM to allow print together with the progress line in the same STDOUT
+
+def tqdm_print(*args, **kwargs):
+    for arg in args:
+        tqdm.tqdm.write(str(arg), **kwargs)
 
 @contextmanager
 def redirect_to_tqdm():
@@ -113,7 +141,7 @@ def redirect_to_tqdm():
     old_print = print
     try:
         # Globaly replace print with tqdm.write
-        inspect.builtins.print = tqdm.tqdm.write
+        inspect.builtins.print = tqdm_print
         yield
     finally:
         inspect.builtins.print = old_print
@@ -122,8 +150,9 @@ def tqdm_redirect(*args, **kwargs):
     with redirect_to_tqdm():
         for x in tqdm.tqdm(*args, file=stdout, **kwargs):
             yield x
+
             
-# dump pickle
+# Pickle and JSON related functions
 def pkl(obj, filename=None):
     if not filename:
         frame = inspect.currentframe().f_back
@@ -142,3 +171,12 @@ def get_pkl(obj=None):
     filename = 'saved/' + obj + '.pkl'
     with open(filename, 'rb') as handle:
         return pickle.load(handle)
+    
+def get_json(json_or_path):
+    # Can load from either a json string or a file path
+    try:
+        return json.loads(json_or_path)
+    except:
+        with open(json_or_path, 'r') as handle:
+            return json.loads(handle.read())
+    

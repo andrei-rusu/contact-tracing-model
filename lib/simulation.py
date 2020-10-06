@@ -1,3 +1,6 @@
+from collections import defaultdict
+import numpy as np
+
 from lib.utils import Event
 
 class SimEvent(Event):
@@ -26,13 +29,71 @@ class Simulation():
                     from_next = current_state
                     to_next = to
                     id_next = nid
+                
         if id_next is None:
             return None
+        
+#         if to_next == 'T':
+#             print(id_next, best_time)
+#             from time import sleep
+#             sleep(1.5)
+        
         return SimEvent(node=id_next, fr=from_next, to=to_next, time=best_time)
+    
+    def get_next_trace_event(self):
+        id_next = None
+        from_next = None
+        to_next = None
+        best_time = float('inf')
+        
+        traceable_states = ['S', 'E', 'I', 'Ia', 'Is']
+        
+        # lazily initialize a dict with the correct transition functions for tracing
+        try:
+            trace_funcs = self.trace_funcs
+        except:
+            trace_funcs = {
+                s : dict(self.trans[s])['T']
+                for s in traceable_states
+            }
+            self.trace_funcs = trace_funcs
+
+        # Filter out nodes that can actually be traced
+        traced_nodes = np.array(self.net.node_traced)
+        correct_state_nodes = np.isin(self.net.node_states, traceable_states)
+        not_traced = np.where(~traced_nodes & correct_state_nodes)[0]
+        
+        for nid in not_traced:
+            current_state = self.net.node_states[nid]
+            # rate_func is a lambda expression waiting for a net and a node id
+            rate = trace_funcs[current_state](self.net, nid)
+            # increment time with the current rate
+            trans_time = self.time + rate
+            if trans_time < best_time:
+                best_time = trans_time
+                from_next = current_state
+                to_next = 'T'
+                id_next = nid
+                
+        if id_next is None:
+            return None
+        
+#         print(id_next, best_time)
+#         from time import sleep
+#         sleep(1.5)
+
+        return SimEvent(node=id_next, fr=from_next, to=to_next, time=best_time)        
                 
         
     def run_event(self, e):
         self.net.change_state_fast_update(e.node, e.to)
+        self.time = e.time
+        
+    def run_event_separate_traced(self, e):
+        if e.to != 'T':
+            self.net.change_state_fast_update(e.node, e.to)
+        else:
+            self.net.change_traced_state_fast_update(e.node)
         self.time = e.time
         
     def run_until(self, time_limit):

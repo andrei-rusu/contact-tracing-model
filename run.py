@@ -1,28 +1,46 @@
 import argparse
 import random
-import tqdm
-import math
 
+from tqdm import tqdm
 from time import sleep
 from itertools import count
 from collections import defaultdict
 from pathos.multiprocessing import ProcessingPool as Pool
-from copy import deepcopy
 
 import matplotlib.pyplot as plt
 
 from lib import network
-from lib.utils import expFactorTimesCount, tqdm_redirect
+from lib.utils import tqdm_redirect, expFactorTimesCount
 from lib.simulation import Simulation
 from lib.stats import StatsProcessor, StatsEvent
+from lib.models import get_transitions_for_model, add_trans
 
+# Covid default parameter values according to Domenico et al. 2020
+# https://bmcmedicine.biomedcentral.com/articles/10.1186/s12916-020-01698-4#additional-information
 PARAMETER_DEFAULTS = {
-    'beta': 0.1, 'alpha': 1/3.7, 'gamma': 1/(1.5 + 2.3), 
-    'taur': 0.1, 'taut': 0.1, 'tautrange': False, 'gammatau': 0.5, 
-    'netsize': 1000, 'k': 10, 'draw': False,
-    'dual': True, 'overlap': .08, 'zadd': 5, 'zrem': 5,
-    'nnets': 1, 'niters': 1, 'nevents': 20, 'seed': 43, 
-    'multip': False, 'exposed': False, 'spontan': False,
+    'beta': 0.0791, # transmission rate -> For Covid, 0.0791 correponding to R0=3.18; later lockdown estimation: .0806
+    'eps': 1/3.7, # latency -> For Covid 3.7 days
+    'gamma': 1/2.3, # global (spontaneus) recovey rate -> For Covid 2.3 days
+    'spontan': False, # allow spontaneus recovery (for SIR and SEIR only, Covid uses this by default)
+    'gammatau': None, # recovery rate for traced people (if None, global gamma is used)
+    'taur': 0.1, 'taut': 0.1, # random tracing (testing) + contract-tracing rate which will be multiplied with no of traced contacts
+    'tautrange': False, # testing multiple values for taut
+    'netsize': 1000, 'k': 10, # net size and avg degree
+    'overlap': .08, 'zadd': 0, 'zrem': 5, # net overlap translated to z_rem / z_add & z_rem OR specific z_add, z_rem if overlap is None
+    'nnets': 1, 'niters': 1, 'nevents': 0, # running number of nets, iterations per net and events (if 0, until no more events)
+    'multip': False, # whether multiprocessing is used
+    'draw': False, 'draw_iter': False, 'dual': True, 'seed': 43,
+    # None -> full_summary never called; False -> no summary printing, True -> print summary as well
+    'summary': None,
+    'separate_traced': False, # whether to have the Traced state separate from all the other states
+    'model': 'sir', # can be sir, seir or covid
+    # COVID model specific parameters:
+    'pa': 0.2, # probability of being asymptomatic (could also be 0.5)
+    'miup': 1/1.5, # duration of prodromal phase
+    'ph': [0, 0.1, 0.2], # probability of being hospitalized (i.e. having severe symptoms Pss) based on age category 
+    'lamdahr': [0, .083, .033], # If hospitalized, daily rate entering in R based on age category
+    'lamdahd': [0, .0031, .0155], # If hospitalized, daily rate entering in D based on age category
+    'group': 1 # Age group; Can be 0 - children, 1 - adults, 2 - senior
 }
 
 def main(args):
@@ -35,38 +53,18 @@ def main(args):
     
     # Random first infected across simulations
     first_inf = random.sample(range(args.netsize), 1)[0]
-     
-    # Transition parameters for true_net (only S->E->I->R in Dual net scenario)
-    trans_true = defaultdict(dict)
     
-    if args.exposed:
-        # SEIR model
-        # Infections spread based on true_net connections depending on nid
-        trans_true['S']['E'] = \
-            lambda net, nid: expFactorTimesCount(net, nid, state='I', lamda=args.beta, base=0)
-        # Next transition is network independent (at rate alpha) but we keep the same API for sampling at get_next_event time
-        trans_true['E']['I'] = \
-            lambda net, nid: -(math.log(random.random()) / args.alpha)
-    else:
-        # SIR model
-        trans_true['S']['I'] = \
-            lambda net, nid: expFactorTimesCount(net, nid, state='I', lamda=args.beta, base=0)
-        
-    if args.spontan:
-        # allow spontaneuous recovery (without tracing) with rate gamma
-        trans_true['I']['R'] = \
-            lambda net, nid: -(math.log(random.random()) / args.gamma)
-      
-    # Transition parameters for know_net (only I->T->R in Dual net scenario)
-    # If args.dual false, the same net and transition objects are used for both infection and tracing
-    trans_know = defaultdict(dict) if args.dual else trans_true
-    # Recovery for traced nodes is network independent at rate gammatau
-    trans_know['T']['R'] = \
-        lambda net, nid: -(math.log(random.random()) / args.gammatau)
+    # Boolean responsible for determining whether nInfectious = nInfected
+    no_exposed = (args.model == 'sir')
     
-    # we cache transition items due to efficiency reasons
-    trans_true_items = defaultdict(list, {k : list(trans_true[k].items()) for k in trans_true})
-    trans_know_items = defaultdict(list, {k : list(trans_know[k].items()) for k in trans_know}) if args.dual else trans_true_items
+    # Whether the model is Covid or not
+    is_covid = (args.model == 'covid')
+ 
+    # Set recovery rate for traced people based on whether gammatau was provided
+    if args.gammatau is None: args.gammatau = args.gamma
+    
+    # Transition dictionaries for each network will be populated based on args.model {state->list(state, trans_func)}
+    trans_true_items, trans_know_items = get_transitions_for_model(args)
     
     # we can simulate with a range of tracing rates or with a single one provied by args.taut
     tracing_rates = [0, .1, .25, .5, .75, 1, 1.5, 2.5] if args.tautrange else [args.taut]
@@ -74,28 +72,34 @@ def main(args):
     for tr_rate in tracing_rates:
         
         print('For taut =', tr_rate)
-    
-        # Tracing happens over know_net depending on nid
-        trans_know['I']['T'] = \
-            lambda net, nid: expFactorTimesCount(net, nid, state='T', lamda=tr_rate, base=args.taur)
-        # we cache trans_know_items due to efficiency reasons
-        trans_know_items['I'] = list(trans_know['I'].items())
+
+        # Tracing for 'S', 'E', 'I(p)' happens over know_net depending only on the traced neighbor count of nid
+        tr_func = lambda net, nid: expFactorTimesCount(net, nid, state='T', lamda=tr_rate, base=0)
+        add_trans(trans_know_items, 'S', 'T', tr_func)
+        add_trans(trans_know_items, 'E', 'T', tr_func)
+        add_trans(trans_know_items, 'I', 'T', tr_func)
+        
+        # Tracing for 'Ia' and 'Is' also depends on a random tracing rate (due to random testing)
+        tr_and_test_func = lambda net, nid: expFactorTimesCount(net, nid, state='T', lamda=tr_rate, base=args.taur)
+        add_trans(trans_know_items, 'Ia', 'T', tr_and_test_func)
+        add_trans(trans_know_items, 'Is', 'T', tr_and_test_func)
                 
         for inet in range(args.nnets):
             print('Simulating network - No.', inet)
             
             # Get true_net with all nodes in state 'S' but one which is 'I'
             true_net = network.get_random(args.netsize, args.k)
-            true_net.change_state(first_inf, state='I', update=True) 
-            
+            true_net.change_state(first_inf, state='I', update=True)
+                        
             if args.dual:
-                # Priority will be given to the overlap value -> z_add = z_rem = z
+                # Priority will be given to the overlap value
+                # Normally z_add = z_rem = z, but if z_add = 0 then only z_rem=z is produced
                 # If overlap is None, zadd and zrem values are used
                 know_net = network.get_dual(true_net, args.overlap, args.zadd, args.zrem)
-
+                
                 # Object used during Multiprocessing of Network simulation events
                 engine = EngineDual(
-                    args=args,
+                    args=args, no_exposed=no_exposed, is_covid=is_covid,
                     true_net=true_net, know_net=know_net,
                     trans_true=trans_true_items, trans_know=trans_know_items
                 )
@@ -103,7 +107,7 @@ def main(args):
             else:
                 # Object used during Multiprocessing of Network simulation events
                 engine = EngineOne(
-                    args=args,
+                    args=args, no_exposed=no_exposed, is_covid=is_covid,
                     true_net=true_net,
                     trans_true=trans_true_items,
                 )
@@ -119,7 +123,7 @@ def main(args):
                 for itr in tqdm_redirect(iters_range):
                     print('Running iteration ' + str(itr) + ':')
                     
-                    # Reinitialize network + Random first infected at the beginning of each run but the first one
+                    # Reinitialize network + Random first infected at the beginning of each run BUT the first one
                     # This is needed only in sequential processing since in multiprocessing the nets are deepcopied anyway
                     if itr:
                         engine.reinit_net(first_inf)
@@ -132,9 +136,13 @@ def main(args):
                     print('---> Result:' + str(stats_events[-1]['totalInfected']) + ' total infected persons over time.')
                     
         stats.results_for_param(tr_rate)
-
-    return stats     
         
+    if args.summary is not None:
+        return stats.full_summary(args.summary)
+
+    return stats, true_net, know_net
+
+
 
 # Classes used to perform Multiprocessing iterations
 
@@ -163,8 +171,10 @@ class EngineDual(Engine):
         if self.args.draw:
             plt.figure(figsize=(14, 5))
             plt.subplot(121)
+            plt.title('True Network')
             self.true_net.draw(show=False)
             plt.subplot(122)
+            plt.title('Tracing Network')
             self.know_net.draw(self.true_net.pos, show=False)
             plt.show()        
 
@@ -174,12 +184,15 @@ class EngineDual(Engine):
 
         # metrics to record simulation summary
         m = {
-            'nE' : 0,
             'nI' : 1,
+            'nE' : 0,
+            'nH' : 0,
             'totalInfected' : 1,
             'totalInfectious': 1,
             'totalTraced' : 0,
-            'totalRemoved' : 0,
+            'totalRecovered' : 0,
+            'totalHospital' : 0,
+            'totalDeath' : 0,
             'tracingEffortRandom' : -1,
             'tracingEffortContact' : -1,
         }
@@ -190,43 +203,81 @@ class EngineDual(Engine):
         # Infinite loop if args.nevents not specified (run until no event possible) OR run exactly args.nevents otherwise
         events_range = range(self.args.nevents) if self.args.nevents else count()
         for i in events_range:
+            
             e1 = sim_true.get_next_event()
-            e2 = sim_know.get_next_event()
+            
+            if self.args.separate_traced:
+                e2 = sim_know.get_next_trace_event()
 
-            # If no more events left, break out of the loop
-            if e1 is None and e2 is None:
-                break
+                # If no more events left, break out of the loop
+                if e1 is None and e2 is None:
+                    break
 
-            e = e1 if (e2 is None or (e1 is not None and e1.time < e2.time)) else e2
+                e = e1 if (e2 is None or (e1 is not None and e1.time < e2.time)) else e2
 
-            sim_true.run_event(e)
-            sim_know.run_event(e)
+                sim_true.run_event_separate_traced(e)
+                sim_know.run_event_separate_traced(e)
+                
+                if e.to != 'T':
+                    # update simulation statistics via event.FROM only if event was NOT a tracing event
+                    # for models other than covid, leaving 'I' means a decrease in infectious
+                    # for covid, leaving Ia or Is state means current infectious decreases
+                    if (not self.is_covid and e.fr == 'I') or e.fr == 'Ia' or e.fr == 'Is':
+                        m['nI'] -= 1
+                    elif e.fr == 'E':
+                        m['nE'] -= 1
+                    elif e.fr == 'H':
+                        m['nH'] -= 1
+                    
+            else:
+                e2 = sim_know.get_next_event()
 
-            # update counts
-            if e.fr == 'I':
-                m['nI'] -= 1
-            elif e.fr == 'E':
-                m['nE'] -= 1
-            if e.to == 'T':
+                # If no more events left, break out of the loop
+                if e1 is None and e2 is None:
+                    break
+
+                e = e1 if (e2 is None or (e1 is not None and e1.time < e2.time)) else e2
+
+                sim_true.run_event(e)
+                sim_know.run_event(e)
+                
+                # if NOT separate_traced, then update statistics is as-normal for all events (incl tracing)
+                # I -> T OR leaving Ia/Is means a decrease in number of infecious at the time
+                if e.fr == 'I' and e.to == 'T' or e.fr == 'Ia' or e.fr == 'Is':
+                    m['nI'] -= 1
+                elif e.fr == 'E':
+                    m['nE'] -= 1
+                elif e.fr == 'H':
+                    m['nH'] -= 1
+
+                    
+            # event.TO Updates are common for all models
+            
+            if e.to == 'I':
+                m['nI'] += 1
+                m['totalInfectious'] +=1
+                # in SIR totalInfected = totalInfectious
+                if self.no_exposed: m['totalInfected'] = m['totalInfectious']
+            elif e.to == 'R':
+                m['totalRecovered'] += 1
+            elif e.to == 'T':
                 m['totalTraced'] += 1
             elif e.to == 'E':
                 m['nE'] += 1
                 m['totalInfected'] += 1
-            elif e.to == 'I':
-                m['nI'] += 1
-                m['totalInfectious'] +=1
-                # in SIR totalInfected = totalInfectious
-                if not self.args.exposed:
-                    m['totalInfected'] = m['totalInfectious']
-            elif e.to == 'R':
-                m['totalRemoved'] += 1
+            elif e.to == 'H':
+                m['nH'] += 1
+                m['totalHospital'] += 1
+            elif e.to == 'D':
+                m['totalDeath'] += 1
 
-            # compute random tracing effort -> netsize - totalTraced - nTotalRemoved = 'S' + 'E' + 'I'
-            m['tracingEffortRandom'] = self.args.taur * (self.args.netsize - m['totalTraced'] - m['totalRemoved'])
-            # compute active tracing effort -> still care only about 'S', 'E', 'I'
+            # compute random tracing effort -> net_size - non_traceable_states = traceable_states ('S', 'E', 'I', 'Ia', 'Is')
+            m['tracingEffortRandom'] = self.args.taur * 
+                (self.args.netsize - m['totalTraced'] - m['totalHospital'] - m['totalRecovered'] - m['totalDeath'])
+            # compute active tracing effort -> we only care about traceable_states ('S', 'E', 'I', 'Ia', 'Is')
             tracingEffortAccum = 0
             for nid, state in enumerate(self.know_net.node_states):
-                if state in ['S', 'E', 'I']:
+                if state in ['S', 'E', 'I', 'Ia', 'Is']:
                     tracingEffortAccum += self.know_net.node_counts[nid]['T']
             m['tracingEffortContact'] = self.args.taut * tracingEffortAccum
 
@@ -235,21 +286,26 @@ class EngineDual(Engine):
             result.append(StatsEvent(**m))
 
             # draw network at each inner state if option selected
-#             if self.args.draw:
-#                 print('State after events iteration', i, ':')
+#             if self.args.draw_iter:
+#                 print('State after events iteration ' + str(i) + ':')
 #                 plt.figure(figsize=(14, 5))
 #                 plt.subplot(121)
+#                 plt.title('True Network')
 #                 self.true_net.draw(show=False)
 #                 plt.subplot(122)
+#                 plt.title('Tracing Network')
 #                 self.know_net.draw(self.true_net.pos, show=False)
 #                 plt.show()
 #                 sleep(1.5)
 
         if self.args.draw:
+            print('Final state:')
             plt.figure(figsize=(14, 5))
             plt.subplot(121)
+            plt.title('True Network')
             self.true_net.draw(show=False)
             plt.subplot(122)
+            plt.title('Tracing Network')
             self.know_net.draw(self.true_net.pos, show=False)
             plt.show()                
 
@@ -268,12 +324,15 @@ class EngineOne(Engine):
 
         # metrics to record simulation summary
         m = {
-            'nE' : 0,
             'nI' : 1,
+            'nE' : 0,
+            'nH' : 0,
             'totalInfected' : 1,
             'totalInfectious': 1,
             'totalTraced' : 0,
-            'totalRemoved' : 0,
+            'totalRecovered' : 0,
+            'totalHospital' : 0,
+            'totalDeath' : 0,
             'tracingEffortRandom' : -1,
             'tracingEffortContact' : -1,
         }
@@ -294,32 +353,40 @@ class EngineOne(Engine):
 
             sim_true.run_event(e)
 
-            # update counts
-            if e.fr == 'I':
+            # I -> T OR leaving Ia/Is means a decrease in number of infecious at the time
+            if e.fr == 'I' and e.to == 'T' or e.fr == 'Ia' or e.fr == 'Is':
                 m['nI'] -= 1
             elif e.fr == 'E':
                 m['nE'] -= 1
-            if e.to == 'T':
+            elif e.fr == 'H':
+                m['nH'] -= 1
+                                
+            if e.to == 'I':
+                m['nI'] += 1
+                m['totalInfectious'] +=1
+                # in SIR totalInfected = totalInfectious
+                if self.no_exposed: m['totalInfected'] = m['totalInfectious']
+            elif e.to == 'R':
+                m['totalRecovered'] += 1
+            elif e.to == 'T':
                 m['totalTraced'] += 1
             elif e.to == 'E':
                 m['nE'] += 1
                 m['totalInfected'] += 1
-            elif e.to == 'I':
-                m['nI'] += 1
-                m['totalInfectious'] +=1
-                # in SIR totalInfected = totalInfectious
-                if not self.args.exposed:
-                    m['totalInfected'] = m['totalInfectious']
-            elif e.to == 'R':
-                m['totalRemoved'] += 1
+            elif e.to == 'H':
+                m['nH'] += 1
+                m['totalHospital'] += 1
+            elif e.to == 'D':
+                m['totalDeath'] += 1
 
-            # compute random tracing effort -> netsize - totalTraced - nTotalRemoved = 'S' + 'E' + 'I'
-            m['tracingEffortRandom'] = self.args.taur * (self.args.netsize - m['totalTraced'] - m['totalRemoved'])
-            # compute active tracing effort -> still care only about 'S', 'E', 'I'
+            # compute random tracing effort -> net_size - non_traceable_states = traceable_states ('S', 'E', 'I', 'Ia', 'Is')
+            m['tracingEffortRandom'] = self.args.taur * (self.args.netsize 
+                                                         - m['totalTraced'] - m['totalHospital'] - m['totalRecovered'] - m['totalDeath'])
+            # compute active tracing effort -> we only care about traceable_states ('S', 'E', 'I', 'Ia', 'Is')
             tracingEffortAccum = 0
-            for nid, state in enumerate(self.true_net.node_states):
-                if state in ['S', 'E', 'I']:
-                    tracingEffortAccum += self.true_net.node_counts[nid]['T']
+            for nid, state in enumerate(self.know_net.node_states):
+                if state in ['S', 'E', 'I', 'Ia', 'Is']:
+                    tracingEffortAccum += self.know_net.node_counts[nid]['T']
             m['tracingEffortContact'] = self.args.taut * tracingEffortAccum
 
             # record metrics after event run for time e.time
@@ -327,6 +394,7 @@ class EngineOne(Engine):
             result.append(StatsEvent(**m))
             
         if self.args.draw:
+            print('Final state:')
             self.true_net.draw()
             
         return result
@@ -354,5 +422,6 @@ if __name__ == '__main__':
         argparser.add_argument('--' + k, type=type(default), default=default)
 
     args = argparser.parse_args()
+    args.summary = True # If script run, full_summary in print mode will always be called
 
     main(args)

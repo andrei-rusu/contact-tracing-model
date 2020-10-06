@@ -1,8 +1,10 @@
 from collections import defaultdict
 import numpy as np
+import json
 
 from lib.utils import Event
 
+# Class to hold stats events
 class StatsEvent(Event):
     pass
 
@@ -28,7 +30,7 @@ class StatsProcessor():
     def __getitem__(self, item):
          return self.param_res[item]
         
-    def full_summary(self):
+    def full_summary(self, printit=False):
         """
         This produces a full summary of the simulations run via run.run_mock
         """
@@ -52,7 +54,10 @@ class StatsProcessor():
             avg_max = 0
             avg_timeofmax = 0
             avg_overallinf = 0
-            avg = np.zeros((7, split))
+            avg_h_max = 0
+            avg_h_timeofmax = 0
+            avg_h_overallhosp = 0
+            avg = np.zeros((10, split))
                         
             for i in range(split):
                 avg[0][i] = max_time * (i + 1) / split
@@ -66,23 +71,40 @@ class StatsProcessor():
                         serI += 1
                     # get last index of the j'th split
                     last_idx = serI - 1
-                    avg[1][j] += ser[last_idx].nI
+                    avg[1][j] += ser[last_idx].nI + ser[last_idx].nE
                     avg[2][j] += ser[last_idx].totalInfected
                     avg[3][j] += ser[last_idx].totalTraced
-                    avg[4][j] += ser[last_idx].totalRemoved
+                    avg[4][j] += ser[last_idx].totalRecovered
                     avg[5][j] += ser[last_idx].tracingEffortRandom
                     avg[6][j] += ser[last_idx].tracingEffortContact
-                    
-                this_max = ser[0].nI
+                    avg[7][j] += ser[last_idx].nH
+                    avg[8][j] += ser[last_idx].totalHospital
+                    avg[9][j] += ser[last_idx].totalDeath
+
+                
+                # Get Peak of Infection and total overall infected
+                this_max = ser[0].nI + ser[0].nE
                 this_timeofmax = ser[0].time
                 for event in ser:
-                    if this_max < event.nI:
-                        this_max = event.nI
-                        this_timeofmax = event.time
-                        
+                    if this_max < event.nI + event.nE:
+                        this_max = event.nI + event.nE
+                        this_timeofmax = event.time    
                 avg_max += this_max
                 avg_timeofmax += this_timeofmax
                 avg_overallinf += ser[-1].totalInfected
+                
+                
+                # Get Peak of Hospitalized and total overall hospitalized
+                this_max = ser[0].nH
+                this_timeofmax = ser[0].time
+                for event in ser:
+                    if this_max < event.nH:
+                        this_max = event.nH
+                        this_timeofmax = event.time
+                        
+                avg_h_max += this_max
+                avg_h_timeofmax += this_timeofmax
+                avg_h_overallhosp += ser[-1].totalHospital
 
 
             # normalize by the number of events
@@ -91,19 +113,31 @@ class StatsProcessor():
             avg_max /= len_series
             avg_timeofmax /= len_series
             avg_overallinf /= len_series
+            avg_h_max /= len_series
+            avg_h_timeofmax /= len_series
+            avg_h_overallhosp /= len_series
             
             # update averages dictionary
-            summary[param]['time'] = avg[0]
-            summary[param]['average-infected'] = avg[1]
-            summary[param]['average-max-infected'] = avg_max
-            summary[param]['average-time-of-max-infected'] = avg_timeofmax
-            summary[param]['average-overall-infected'] = avg_overallinf
-            summary[param]['average-total-infected'] = avg[2]
-            summary[param]['average-total-traced'] = avg[3]
-            summary[param]['average-total-removed'] = avg[4]
-            summary[param]['average-effort-random'] = avg[5]
-            summary[param]['average-effort-contact'] = avg[6]
-            summary[param]['average-effort-total'] = avg[5] + avg[6]
+            current = summary[param]
+            current['time'] = avg[0]
+            current['average-infected'] = avg[1]
+            current['average-max-infected'] = avg_max
+            current['average-time-of-max-infected'] = avg_timeofmax
+            current['average-overall-infected'] = avg_overallinf
+            current['average-total-infected'] = avg[2]
+            current['average-total-traced'] = avg[3]
+            current['average-total-recovered'] = avg[4]
+            current['average-effort-random'] = avg[5]
+            current['average-effort-contact'] = avg[6]
+            current['average-effort-total'] = avg[5] + avg[6]
+            current['average-hospital'] = avg[7]
+            current['average-max-hospital'] = avg_h_max
+            current['average-time-of-max-hospital'] = avg_h_timeofmax
+            current['average-total-hospital'] = avg_h_overallhosp
+            current['average-total-death'] = avg[9]
+
+        if printit:
+            print(json.dumps(summary, cls=NumpyEncoder))
 
         return summary
            
