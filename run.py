@@ -73,16 +73,23 @@ def main(args):
         
         print('For taut =', tr_rate)
 
-        # Tracing for 'S', 'E', 'I(p)' happens over know_net depending only on the traced neighbor count of nid
+        # Tracing for 'S', 'E' happens over know_net depending only on the traced neighbor count of nid (no testing possible)
         tr_func = lambda net, nid: expFactorTimesCount(net, nid, state='T', lamda=tr_rate, base=0)
         add_trans(trans_know_items, 'S', 'T', tr_func)
         add_trans(trans_know_items, 'E', 'T', tr_func)
-        add_trans(trans_know_items, 'I', 'T', tr_func)
         
-        # Tracing for 'Ia' and 'Is' also depends on a random tracing rate (due to random testing)
+        # Tracing for I states which can be found via testing also depend on a random testing rate: args.taur
         tr_and_test_func = lambda net, nid: expFactorTimesCount(net, nid, state='T', lamda=tr_rate, base=args.taur)
-        add_trans(trans_know_items, 'Ia', 'T', tr_and_test_func)
-        add_trans(trans_know_items, 'Is', 'T', tr_and_test_func)
+        if is_covid:
+            # We assume 'I(p)' will not be spotted via testing (false negatives in the first week)
+            add_trans(trans_know_items, 'I', 'T', tr_func)
+            # Tracing for 'Ia' and 'Is' also depends on a random tracing rate (due to random testing)
+            add_trans(trans_know_items, 'Ia', 'T', tr_and_test_func)
+            add_trans(trans_know_items, 'Is', 'T', tr_and_test_func)
+        else:
+            # in non-COVID models we assume all 'I' states can be spotted via testing
+            add_trans(trans_know_items, 'I', 'T', tr_and_test_func)
+                
                 
         for inet in range(args.nnets):
             print('Simulating network - No.', inet)
@@ -90,6 +97,9 @@ def main(args):
             # Get true_net with all nodes in state 'S' but one which is 'I'
             true_net = network.get_random(args.netsize, args.k)
             true_net.change_state(first_inf, state='I', update=True)
+            
+            # Placeholder for the dual network (will be initialized only if args.dual)
+            know_net = None
                         
             if args.dual:
                 # Priority will be given to the overlap value
@@ -141,7 +151,6 @@ def main(args):
         return stats.full_summary(args.summary)
 
     return stats, true_net, know_net
-
 
 
 # Classes used to perform Multiprocessing iterations
@@ -214,14 +223,18 @@ class EngineDual(Engine):
                     break
 
                 e = e1 if (e2 is None or (e1 is not None and e1.time < e2.time)) else e2
-
-                sim_true.run_event_separate_traced(e)
-                sim_know.run_event_separate_traced(e)
                 
-                if e.to != 'T':
-                    # update simulation statistics via event.FROM only if event was NOT a tracing event
-                    # for models other than covid, leaving 'I' means a decrease in infectious
-                    # for covid, leaving Ia or Is state means current infectious decreases
+                # if the event chosen is a tracing event, separate logic follows (NOT updating event.FROM counts!)
+                if e.to == 'T':
+                    sim_true.run_trace_event(e)
+                    sim_know.run_trace_event(e)
+                # otherwise, normal logic follows (with update counts)
+                else:
+                    sim_true.run_event(e)
+                    sim_know.run_event(e)
+                    # Update event.FROM counts:
+                    #   - for models other than covid, leaving 'I' means a decrease in infectious count
+                    #   - for covid, leaving 'Ia' or 'Is' means current infectious count decreases
                     if (not self.is_covid and e.fr == 'I') or e.fr == 'Ia' or e.fr == 'Is':
                         m['nI'] -= 1
                     elif e.fr == 'E':
@@ -241,9 +254,10 @@ class EngineDual(Engine):
                 sim_true.run_event(e)
                 sim_know.run_event(e)
                 
-                # if NOT separate_traced, then update statistics is as-normal for all events (incl tracing)
-                # I -> T OR leaving Ia/Is means a decrease in number of infecious at the time
-                if e.fr == 'I' and e.to == 'T' or e.fr == 'Ia' or e.fr == 'Is':
+                # Update event.FROM counts:
+                #   - for models other than covid, leaving 'I' means a decrease in infectious count
+                #   - for covid, leaving 'Ia' or 'Is' means current infectious count decreases
+                if (not self.is_covid and e.fr == 'I') or e.fr == 'Ia' or e.fr == 'Is':
                     m['nI'] -= 1
                 elif e.fr == 'E':
                     m['nE'] -= 1
@@ -345,21 +359,55 @@ class EngineOne(Engine):
 
         for i in events_range:
 
-            e = sim_true.get_next_event()
+            e1 = sim_true.get_next_event()
+            
+            ### NOTE: Running separate_traced sims on a Single network is actually SLOWER than running on Dual directly
+            if self.args.separate_traced:
+                # allow for separate tracing events to also be considered in the current events loop
+                e2 = sim_true.get_next_trace_event()
 
-            # If no more events left, break out of the loop
-            if e is None:
-                break
+                # If no more events left, break out of the loop
+                if e1 is None and e2 is None:
+                    break
 
-            sim_true.run_event(e)
+                e = e1 if (e2 is None or (e1 is not None and e1.time < e2.time)) else e2
 
-            # I -> T OR leaving Ia/Is means a decrease in number of infecious at the time
-            if e.fr == 'I' and e.to == 'T' or e.fr == 'Ia' or e.fr == 'Is':
-                m['nI'] -= 1
-            elif e.fr == 'E':
-                m['nE'] -= 1
-            elif e.fr == 'H':
-                m['nH'] -= 1
+                # if the event chosen is a tracing event, separate logic follows (NOT updating event.FROM counts!)
+                if e.to == 'T':
+                    sim_true.run_trace_event(e)
+                # otherwise, normal logic follows (with update counts)
+                else:
+                    sim_true.run_event(e)
+                    # Update event.FROM counts:
+                    #   - for models other than covid, leaving 'I' means a decrease in infectious count
+                    #   - for covid, leaving 'Ia' or 'Is' means current infectious count decreases
+                    if (not self.is_covid and e.fr == 'I') or e.fr == 'Ia' or e.fr == 'Is':
+                        m['nI'] -= 1
+                    elif e.fr == 'E':
+                        m['nE'] -= 1
+                    elif e.fr == 'H':
+                        m['nH'] -= 1
+                    
+            else:
+                # If no more events left, break out of the loop
+                if e1 is None:
+                    break
+                
+                e = e1
+
+                sim_true.run_event(e)
+
+                # for models other than covid, leaving 'I' means a decrease in infectious
+                # for covid, leaving Ia or Is state means current infectious decreases
+                if (not self.is_covid and e.fr == 'I') or e.fr == 'Ia' or e.fr == 'Is':
+                    m['nI'] -= 1
+                elif e.fr == 'E':
+                    m['nE'] -= 1
+                elif e.fr == 'H':
+                    m['nH'] -= 1
+                    
+            
+            # event.TO Updates are common for all models
                                 
             if e.to == 'I':
                 m['nI'] += 1
@@ -380,18 +428,22 @@ class EngineOne(Engine):
                 m['totalDeath'] += 1
 
             # compute random tracing effort -> net_size - non_traceable_states = traceable_states ('S', 'E', 'I', 'Ia', 'Is')
-            m['tracingEffortRandom'] = self.args.taur * (self.args.netsize 
-                                                         - m['totalTraced'] - m['totalHospital'] - m['totalRecovered'] - m['totalDeath'])
+            m['tracingEffortRandom'] = self.args.taur * (self.args.netsize - \
+                m['totalTraced'] - m['totalHospital'] - m['totalRecovered'] - m['totalDeath'])
             # compute active tracing effort -> we only care about traceable_states ('S', 'E', 'I', 'Ia', 'Is')
             tracingEffortAccum = 0
-            for nid, state in enumerate(self.know_net.node_states):
+            for nid, state in enumerate(self.true_net.node_states):
                 if state in ['S', 'E', 'I', 'Ia', 'Is']:
-                    tracingEffortAccum += self.know_net.node_counts[nid]['T']
+                    tracingEffortAccum += self.true_net.node_counts[nid]['T']
             m['tracingEffortContact'] = self.args.taut * tracingEffortAccum
 
             # record metrics after event run for time e.time
             m['time'] = e.time
             result.append(StatsEvent(**m))
+            
+#             if self.args.draw_iter:
+#                 print('State after events iteration ' + str(i) + ':')
+#                 self.true_net.draw()
             
         if self.args.draw:
             print('Final state:')

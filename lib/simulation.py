@@ -33,11 +33,6 @@ class Simulation():
         if id_next is None:
             return None
         
-#         if to_next == 'T':
-#             print(id_next, best_time)
-#             from time import sleep
-#             sleep(1.5)
-        
         return SimEvent(node=id_next, fr=from_next, to=to_next, time=best_time)
     
     def get_next_trace_event(self):
@@ -48,7 +43,9 @@ class Simulation():
         
         traceable_states = ['S', 'E', 'I', 'Ia', 'Is']
         
-        # lazily initialize a dict with the correct transition functions for tracing
+        # Lazily initialize a dict with the correct transition functions for tracing (we need all state -> T -> func entries)
+        # This is a bit convoluted because the nested dict state -> state -> func is cached for efficiency reasons
+        # Hence the items are actually state -> (state, func) 
         try:
             trace_funcs = self.trace_funcs
         except:
@@ -77,16 +74,16 @@ class Simulation():
                 
         if id_next is None:
             return None
-        
-#         print(id_next, best_time)
-#         from time import sleep
-#         sleep(1.5)
 
         return SimEvent(node=id_next, fr=from_next, to=to_next, time=best_time)        
                 
         
     def run_event(self, e):
         self.net.change_state_fast_update(e.node, e.to)
+        self.time = e.time
+        
+    def run_trace_event(self, e):
+        self.net.change_traced_state_fast_update(e.node)
         self.time = e.time
         
     def run_event_separate_traced(self, e):

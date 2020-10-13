@@ -40,10 +40,10 @@ class StatsProcessor():
         summary['args']['r0'] = self.args.beta / self.args.gamma
         summary['args']['true-overlap'] = self.args.overlap if self.args.dual else 1
         
-        for param, res in self.param_res.items():
+        for param, results_for_param in self.param_res.items():
             
             # transform from defaultdict of dimensions inet, itr, num_events to list of dimension inet * itr , num_events
-            series_to_sum = [sim_events for inet in res for itr, sim_events in res[inet].items()]
+            series_to_sum = [sim_events for inet in results_for_param for sim_events in results_for_param[inet].values()]
         
             max_time = float('-inf')
             for ser in series_to_sum:
