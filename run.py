@@ -471,7 +471,9 @@ if __name__ == '__main__':
     
     for k in PARAMETER_DEFAULTS.keys():
         default = PARAMETER_DEFAULTS[k]
-        argparser.add_argument('--' + k, type=type(default), default=default)
+        # The following is needed since weirdly bool('False') = True in Python
+        typed = type(default) if type(default) != bool else lambda arg: arg.lower() in ("yes", "true", "t", "1")
+        argparser.add_argument('--' + k, type=typed, default=default)
 
     args = argparser.parse_args()
     args.summary = True # If script run, full_summary in print mode will always be called

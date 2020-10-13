@@ -4,8 +4,8 @@
 # set default resource requirements for job 
 # - these can be overridden on the qsub command line
 #
-#PBS -l nodes=1:ppn=2
-#PBS -l walltime=00:40:00
+#PBS -l nodes=1:ppn=15
+#PBS -l walltime=03:00:00
 #PBS -t 1
 #PBS -e data/run/job_output/error
 #PBS -o data/run/job_output/output
@@ -20,29 +20,29 @@ fi
 #Change to directory from which job was submitted
 cd $PBS_O_WORKDIR
 
+module load conda/4.4.0
+source activate contact
+
 #Get a specific parameter configuration based on the ARRAY_ID using the gridsearch.py script
-gridentry=($(python3 lib/gridsearch.py --id $PBS_ARRAYID))
+gridentry=($(python lib/gridsearch.py --id $PBS_ARRAYID))
 #The entries are taut (contact tracing rate); taur (random tracing / testing rate); overlap (app uptake)
 taut=${gridentry[0]}
 taur=${gridentry[1]}
 overlap=${gridentry[2]}
 
-newfile="data/run/simresult_"$taut"_"$taur"_"$overlap".json"
+newfile="data/run/simresult_id"$PBS_ARRAYID"_"$taut"_"$taur"_"$overlap".json"
 
-module load conda/4.4.0
-source activate contact
-
-python3 run.py \
-    --netsize 100 \
+python run.py \
+    --netsize 10000 \
     --k 10 \
     --multip True \
     --model 'covid' \
     --dual True \
     --overlap $overlap \
-    --nnets 1 \
-    --niters 2 \
-    --tautrange False \
+    --nnets 7 \
+    --niters 15 \
     --separate_traced True \
+    --tautrange False \
     --seed 41 \
     --taut $taut \
     --taur $taur > $newfile
