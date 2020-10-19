@@ -5,12 +5,15 @@ import inspect
 import re
 import pickle
 import json
+import glob
 import numpy as np
+import matplotlib.pyplot as plt
 
 from sys import stdout
 from contextlib import contextmanager
 from cProfile import Profile
 from pstats import Stats
+from collections import defaultdict
 
 def get_z_for_overlap(k=10, overlap=.08, include_add=False):
     if include_add:
@@ -80,6 +83,40 @@ def expFactorTimesCountMultiState(net, nid, states=['I'], lamda=1, base=0):
         return -(math.log(random.random()) / exp_param)
     return float('inf')
 
+def get_boxplot_statistics(data, axis=0):
+    for_data = np.array(data)
+    if axis:
+        for_data = for_data.T
+    shape_dat = for_data.shape
+    # this list will hold the statistic dict results
+    results = []
+    # compute standard dev - if more than 1 element ddof=1 ; if ndim = 1 output array with one element
+    if for_data.ndim == 1:
+        stds = [np.std(for_data, ddof=1) if shape_dat[0] > 1 else 0]
+    else:
+        stds = np.std(for_data, axis=0, ddof=1) if shape_dat[0] > 1 else [0] * shape_dat[1]
+    # boxplot computes mean, quartiles and whiskers
+    B = plt.boxplot(for_data, showmeans=True)
+    plt.clf()
+    # Record means and medians for each axis
+    means = B['means']
+    meds = B['medians']
+    # there are 2 whiskers (low, high) per axis !!!
+    whisks = B['whiskers']
+    # iterate through the statistics
+    for i in range(len(means)):
+        dct = {}
+        dct['mean'] = means[i].get_ydata()[0]
+        dct['std'] = stds[i]
+        whisk1 = whisks[2*i].get_ydata()
+        whisk2 = whisks[2*i+1].get_ydata()
+        dct['whislo'] = whisk1[1]
+        dct['q1'] = whisk1[0]
+        dct['med'] = meds[i].get_ydata()[0]
+        dct['q3'] = whisk2[0]
+        dct['whishi'] = whisk2[1]
+        results.append(dct)
+    return results
 
 ### Useful classes ###
 
@@ -129,7 +166,8 @@ class NumpyEncoder(json.JSONEncoder):
             return obj.tolist()
         return json.JSONEncoder.default(self, obj) 
         
-        
+      
+    
 ### Hack for TQDM to allow print together with the progress line in the same STDOUT
 
 def tqdm_print(*args, **kwargs):
@@ -153,7 +191,9 @@ def tqdm_redirect(*args, **kwargs):
             yield x
 
             
-# Pickle and JSON related functions
+            
+# Pickle and JSON dump to file and retrieve functions
+
 def pkl(obj, filename=None):
     if not filename:
         frame = inspect.currentframe().f_back
@@ -180,4 +220,31 @@ def get_json(json_or_path):
     except:
         with open(json_or_path, 'r') as handle:
             return json.loads(handle.read())
+        
+def process_json_results(path=None, print_id_fail=True):
+    if path is None:
+        path = 'data/run/*.json'
+    else:
+        path += '*.json'
+    nested_dict = lambda: defaultdict(nested_dict)
+    all_sim_res = nested_dict()
+    for file in glob.glob(path):
+        try:
+            json_file = get_json(file)
+            # the json files has keys: 'args' and the single 'taut' value chosen
+            # this is NOT compatible with the 'tautrange': True
+            args = json_file['args']
+            taut = args['taut']
+            taur = args['taur']
+            over = float(round(args['overlap'], 2))
+            # The following try block is needed since sometimes the string key took the int version of the taut var
+            try:
+                results = json_file[str(taut)]
+            except:
+                results = json_file[str(int(taut))]
+            all_sim_res[over][taut][taur] = results
+        except json.JSONDecodeError:
+            if print_id_fail:
+                print(int(re.findall('id(.*?)_', file)[0]), end=",")
+    return all_sim_res
     

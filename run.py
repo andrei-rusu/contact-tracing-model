@@ -1,13 +1,13 @@
 import argparse
 import random
+import numpy as np
+import matplotlib.pyplot as plt
 
 from tqdm import tqdm
 from time import sleep
 from itertools import count
 from collections import defaultdict
 from pathos.multiprocessing import ProcessingPool as Pool
-
-import matplotlib.pyplot as plt
 
 from lib import network
 from lib.utils import tqdm_redirect, expFactorTimesCount
@@ -24,14 +24,14 @@ PARAMETER_DEFAULTS = {
     'spontan': False, # allow spontaneus recovery (for SIR and SEIR only, Covid uses this by default)
     'gammatau': None, # recovery rate for traced people (if None, global gamma is used)
     'taur': 0.1, 'taut': 0.1, # random tracing (testing) + contract-tracing rate which will be multiplied with no of traced contacts
-    'tautrange': False, # testing multiple values for taut
     'netsize': 1000, 'k': 10, # net size and avg degree
     'overlap': .08, 'zadd': 0, 'zrem': 5, # net overlap translated to z_rem / z_add & z_rem OR specific z_add, z_rem if overlap is None
     'nnets': 1, 'niters': 1, 'nevents': 0, # running number of nets, iterations per net and events (if 0, until no more events)
     'multip': False, # whether multiprocessing is used
     'draw': False, 'draw_iter': False, 'dual': True, 'seed': 43,
     # None -> full_summary never called; False -> no summary printing, True -> print summary as well
-    'summary': None,
+    'summary_print': None,
+    'summary_splits': 1000, # how many time splits to use for the epidemic summary
     'separate_traced': False, # whether to have the Traced state separate from all the other states
     'model': 'sir', # can be sir, seir or covid
     # COVID model specific parameters:
@@ -67,7 +67,7 @@ def main(args):
     trans_true_items, trans_know_items = get_transitions_for_model(args)
     
     # we can simulate with a range of tracing rates or with a single one provied by args.taut
-    tracing_rates = [0, .1, .25, .5, .75, 1, 1.5, 2.5] if args.tautrange else [args.taut]
+    tracing_rates = np.atleast_1d(args.taut)
     
     for tr_rate in tracing_rates:
         
@@ -110,7 +110,7 @@ def main(args):
                 # Object used during Multiprocessing of Network simulation events
                 engine = EngineDual(
                     args=args, no_exposed=no_exposed, is_covid=is_covid,
-                    true_net=true_net, know_net=know_net,
+                    true_net=true_net, know_net=know_net, tr_rate=tr_rate,
                     trans_true=trans_true_items, trans_know=trans_know_items
                 )
                 
@@ -118,7 +118,7 @@ def main(args):
                 # Object used during Multiprocessing of Network simulation events
                 engine = EngineOne(
                     args=args, no_exposed=no_exposed, is_covid=is_covid,
-                    true_net=true_net,
+                    true_net=true_net, tr_rate=tr_rate,
                     trans_true=trans_true_items,
                 )
 
@@ -147,8 +147,8 @@ def main(args):
                     
         stats.results_for_param(tr_rate)
         
-    if args.summary is not None:
-        return stats.full_summary(args.summary)
+    if args.summary_print is not None:
+        return stats.full_summary(args.summary_splits, args.summary_print)
 
     return stats, true_net, know_net
 
@@ -199,6 +199,7 @@ class EngineDual(Engine):
             'totalInfected' : 1,
             'totalInfectious': 1,
             'totalTraced' : 0,
+            'totalFalseTraced': 0,
             'totalRecovered' : 0,
             'totalHospital' : 0,
             'totalDeath' : 0,
@@ -276,6 +277,8 @@ class EngineDual(Engine):
                 m['totalRecovered'] += 1
             elif e.to == 'T':
                 m['totalTraced'] += 1
+                # if S -> T then a person has been incorrectly traced
+                if e.fr == 'S': m['totalFalseTraced'] += 1
             elif e.to == 'E':
                 m['nE'] += 1
                 m['totalInfected'] += 1
@@ -293,7 +296,7 @@ class EngineDual(Engine):
             for nid, state in enumerate(self.know_net.node_states):
                 if state in ['S', 'E', 'I', 'Ia', 'Is']:
                     tracingEffortAccum += self.know_net.node_counts[nid]['T']
-            m['tracingEffortContact'] = self.args.taut * tracingEffortAccum
+            m['tracingEffortContact'] = self.tr_rate * tracingEffortAccum
 
             # record metrics after event run for time e.time
             m['time'] = e.time
@@ -344,6 +347,7 @@ class EngineOne(Engine):
             'totalInfected' : 1,
             'totalInfectious': 1,
             'totalTraced' : 0,
+            'totalFalseTraced': 0,
             'totalRecovered' : 0,
             'totalHospital' : 0,
             'totalDeath' : 0,
@@ -418,6 +422,8 @@ class EngineOne(Engine):
                 m['totalRecovered'] += 1
             elif e.to == 'T':
                 m['totalTraced'] += 1
+                # if S -> T then a person has been incorrectly traced
+                if e.fr == 'S': m['totalFalseTraced'] += 1
             elif e.to == 'E':
                 m['nE'] += 1
                 m['totalInfected'] += 1
@@ -435,7 +441,7 @@ class EngineOne(Engine):
             for nid, state in enumerate(self.true_net.node_states):
                 if state in ['S', 'E', 'I', 'Ia', 'Is']:
                     tracingEffortAccum += self.true_net.node_counts[nid]['T']
-            m['tracingEffortContact'] = self.args.taut * tracingEffortAccum
+            m['tracingEffortContact'] = self.tr_rate * tracingEffortAccum
 
             # record metrics after event run for time e.time
             m['time'] = e.time
@@ -476,6 +482,6 @@ if __name__ == '__main__':
         argparser.add_argument('--' + k, type=typed, default=default)
 
     args = argparser.parse_args()
-    args.summary = True # If script run, full_summary in print mode will always be called
+    args.summary_print = True # If script run, full_summary in print mode will always be called
 
     main(args)

@@ -4,14 +4,14 @@
 # set default resource requirements for job 
 # - these can be overridden on the qsub command line
 #
-#PBS -l nodes=1:ppn=15
-#PBS -l walltime=03:00:00
+#PBS -l nodes=1:ppn=16
+#PBS -l walltime=05:30:00
 #PBS -t 1
 #PBS -e data/run/job_output/error
 #PBS -o data/run/job_output/output
 
 # If this is run as a bash script, no PBS var will be set, so set vars
-if [ -z "$PBS_O_WORKDIR"]
+if [ -z "$PBS_O_WORKDIR" ]
 then
     PBS_O_WORKDIR='.'
     PBS_ARRAYID=0
@@ -28,7 +28,8 @@ gridentry=($(python lib/gridsearch.py --id $PBS_ARRAYID))
 #The entries are taut (contact tracing rate); taur (random tracing / testing rate); overlap (app uptake)
 taut=${gridentry[0]}
 taur=${gridentry[1]}
-overlap=${gridentry[2]}
+pa=${gridentry[2]}
+overlap=${gridentry[3]}
 
 newfile="data/run/simresult_id"$PBS_ARRAYID"_"$taut"_"$taur"_"$overlap".json"
 
@@ -39,11 +40,12 @@ python run.py \
     --model 'covid' \
     --dual True \
     --overlap $overlap \
-    --nnets 7 \
-    --niters 15 \
+    --nnets 8 \
+    --niters 25 \
     --separate_traced True \
     --tautrange False \
     --seed 41 \
+    --pa $pa \
     --taut $taut \
     --taur $taur > $newfile
 
