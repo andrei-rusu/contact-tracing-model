@@ -74,7 +74,7 @@ class StatsProcessor():
                 time_range_limits[j] = max_time * (j + 1) / splits
 
             # number of different vars computed across time
-            num_vars = 11
+            num_vars = 13
             # holds simulation result parameters over time
             accumulator = np.zeros((num_vars, splits, len_series))
                                 
@@ -96,44 +96,14 @@ class StatsProcessor():
                     accumulator[2][j][ser_index] = ser[last_idx].totalTraced
                     accumulator[3][j][ser_index] = ser[last_idx].totalRecovered
                     accumulator[4][j][ser_index] = ser[last_idx].tracingEffortRandom
-                    try:
-                        accumulator[5][j][ser_index] = ser[last_idx].tracingEffortContact
-                    except:
-                        print(last_idx)
-                        print(ser[last_idx].tracingEffortContact)
+                    accumulator[5][j][ser_index] = ser[last_idx].tracingEffortContact
                     accumulator[6][j][ser_index] = ser[last_idx].nH
                     accumulator[7][j][ser_index] = ser[last_idx].totalHospital
                     accumulator[8][j][ser_index] = ser[last_idx].totalDeath
                     accumulator[9][j][ser_index] = ser[last_idx].totalInfectious
                     accumulator[10][j][ser_index] = ser[last_idx].totalFalseTraced
-
-#                     avg[1][j] += ser[last_idx].nI + ser[last_idx].nE
-#                     var[1][j] += (ser[last_idx].nI + ser[last_idx].nE) ** 2
-#                     avg[2][j] += ser[last_idx].totalInfected
-#                     var[2][j] += ser[last_idx].totalInfected ** 2
-#                     avg[3][j] += ser[last_idx].totalTraced
-#                     var[3][j] += ser[last_idx].totalTraced ** 2
-#                     avg[4][j] += ser[last_idx].totalRecovered
-#                     var[4][j] += ser[last_idx].totalRecovered ** 2
-#                     avg[5][j] += ser[last_idx].tracingEffortRandom
-#                     var[5][j] += ser[last_idx].tracingEffortRandom ** 2
-#                     avg[6][j] += ser[last_idx].tracingEffortContact
-#                     var[6][j] += ser[last_idx].tracingEffortContact ** 2
-#                     avg[7][j] += ser[last_idx].nH
-#                     var[7][j] += ser[last_idx].nH ** 2
-#                     avg[8][j] += ser[last_idx].totalHospital
-#                     var[8][j] += ser[last_idx].totalHospital ** 2
-#                     avg[9][j] += ser[last_idx].totalDeath
-#                     var[9][j] += ser[last_idx].totalDeath ** 2
-#                     avg[10][j] += ser[last_idx].totalInfectious
-#                     var[10][j] += ser[last_idx].totalInfectious ** 2
-#                     avg[11][j] += ser[last_idx].totalFalseTraced
-#                     var[11][j] += ser[last_idx].totalFalseTraced ** 2
-
-#             ## Var = (SumSq − (Sum × Sum) / n) / (n − 1); Std = sqrt(Var)
-#             var[1:] = np.sqrt((var[1:] - (avg[1:] ** 2) / len_series) / (len_series - ddof))
-#             ## Avg = (Sum / n)
-#             avg[1:] /= len_series
+                    accumulator[11][j][ser_index] = ser[last_idx].totalFalsePositive
+                    accumulator[12][j][ser_index] = ser[last_idx].totalNonCompliant
 
                 
                 # Get Peak of Infection and time of peak
@@ -207,6 +177,12 @@ class StatsProcessor():
 
             current['average-total-false-traced'] = stats_for_timed_parameters[10]
             current['average-overall-false-traced'] = stats_for_timed_parameters[10][-1]
+            
+            current['average-total-false-positive'] = stats_for_timed_parameters[11]
+            current['average-overall-false-positive'] = stats_for_timed_parameters[11][-1]
+            
+            current['average-total-noncompliant'] = stats_for_timed_parameters[12]
+            current['average-overall-noncompliant'] = stats_for_timed_parameters[12][-1]
 
         if printit:
             print(json.dumps(summary, cls=NumpyEncoder))

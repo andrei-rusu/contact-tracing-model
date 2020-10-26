@@ -47,25 +47,30 @@ def seir(trans_true, trans_know, args):
 def covid(trans_true, trans_know, args):
     # Infections spread based on true_net connections depending on nid
     add_trans(trans_true, 'S', 'E', lambda net, nid:  \
-              expFactorTimesCountMultiState(net, nid, states=['I', 'Ia', 'Is'], lamda=args.beta, base=0))
+              expFactorTimesCountMultiState(net, nid, states=['Is'], lamda=args.beta, base=0, rel_states=['I', 'Ia'], rel=args.rel_beta))
     
     # Transition to presymp with latency epsilon (we denote I = Ip !!!)
     add_trans(trans_true, 'E', 'I', lambda net, nid: -(math.log(random.random()) / args.eps))
     
     # Transisitons from prodromal state I are based on (probability of being asymp x duration of prodromal phase)
-    add_trans(trans_true, 'I', 'Ia', lambda net, nid: -(math.log(random.random()) / (args.miup * args.pa)))
-    add_trans(trans_true, 'I', 'Is' , lambda net, nid: -(math.log(random.random()) / (args.miup * (1 - args.pa))))
+    asymp_dur = args.miup * args.pa
+    symp_dur = args.miup * (1 - args.pa)
+    add_trans(trans_true, 'I', 'Ia', lambda net, nid: -(math.log(random.random()) / asymp_dur))
+    add_trans(trans_true, 'I', 'Is', lambda net, nid: -(math.log(random.random()) / symp_dur))
     
     # Asymptomatics can only transition to recovered with duration rate gamma
     add_trans(trans_true, 'Ia', 'R', lambda net, nid: -(math.log(random.random()) / args.gamma))
     
     # Symptomatics can transition to either recovered or hospitalized based on duration gamma and probability ph (Age-group dependent!)
-    add_trans(trans_true, 'Is', 'R', lambda net, nid: -(math.log(random.random()) / (args.gamma * args.ph[args.group])))
-    add_trans(trans_true, 'Is', 'H', lambda net, nid: -(math.log(random.random()) / (args.gamma * (1 - args.ph[args.group]))))
+    hosp_rec = args.gamma * args.ph
+    hosp_ded = args.gamma * (1 - args.ph)
+    add_trans(trans_true, 'Is', 'R', lambda net, nid: -(math.log(random.random()) / hosp_rec))
+    add_trans(trans_true, 'Is', 'H', lambda net, nid: -(math.log(random.random()) / hosp_ded))
     
     # Transitions from hospitalized to R or D are based on measurements in Ile-de-France (Age-group dependent!)
-    add_trans(trans_true, 'H', 'R', lambda net, nid: -(math.log(random.random()) / args.lamdahr[args.group]))
-    add_trans(trans_true, 'H', 'D', lambda net, nid: -(math.log(random.random()) / args.lamdahd[args.group]))
+    add_trans(trans_true, 'H', 'R', lambda net, nid: -(math.log(random.random()) / args.lamdahr))
+    add_trans(trans_true, 'H', 'D', lambda net, nid: -(math.log(random.random()) / args.lamdahd))
 
 def add_trans(trans, fr, to, func):
-    trans[fr].append((to, func))
+    if func is not None:
+        trans[fr].append((to, func))

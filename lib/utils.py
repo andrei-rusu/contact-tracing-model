@@ -6,6 +6,7 @@ import re
 import pickle
 import json
 import glob
+import importlib
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -64,6 +65,13 @@ def exp(lamda=1):
     if lamda:
         return -(math.log(random.random()) / lamda)
     return float('inf')
+
+def expFactorTimesTimeDif(net, nid, lamda=1, current_time=None):
+    if current_time is not None:
+        lamda *= current_time - net.traced_time[nid]
+    if lamda:
+        return -(math.log(random.random()) / lamda)
+    return float('inf')    
     
 def expFactorTimesCount(net, nid, state='I', lamda=1, base=0):
     """
@@ -74,11 +82,21 @@ def expFactorTimesCount(net, nid, state='I', lamda=1, base=0):
         return -(math.log(random.random()) / exp_param)
     return float('inf')
 
-def expFactorTimesCountMultiState(net, nid, states=['I'], lamda=1, base=0):
-    exp_param = 0
+def expFactorTimesCountMultiState(net, nid, states=['I'], lamda=1, base=0, rel_states=[], rel=1):
+    """
+    lamda : multiplicative factor of exponential
+    rel : relative importance
+    states : the number of these states will be multiplied with lamda
+    rel_states : the number fo these states will be multiplied with lamda * rel
+    """
+    exp_param_states = exp_param_rel_states = 0
+    counts = net.node_counts[nid]
     for state in states:
-        exp_param += net.node_counts[nid][state]
-    exp_param = base + lamda * exp_param
+        exp_param_states += counts[state]
+    for state in rel_states:
+        exp_param_rel_states += counts[state]
+        
+    exp_param = base + lamda * (exp_param_states + rel * exp_param_rel_states)
     if exp_param:
         return -(math.log(random.random()) / exp_param)
     return float('inf')
@@ -189,6 +207,12 @@ def tqdm_redirect(*args, **kwargs):
     with redirect_to_tqdm():
         for x in tqdm.tqdm(*args, file=stdout, **kwargs):
             yield x
+            
+            
+# reloads all modules specified
+def rel(*modules):
+    for module in modules:
+        importlib.reload(module)
 
             
             

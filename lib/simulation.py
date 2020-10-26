@@ -18,12 +18,25 @@ class Simulation():
         from_next = None
         to_next = None
         best_time = float('inf')
-        for nid, current_state in enumerate(self.net.node_states):
-            for to, rate_func in self.trans[current_state]:
+        
+        # making local vars for efficiency
+        net = self.net
+        trans = self.trans
+        time = self.time
+        node_list = net.node_list
+        node_states = net.node_states
+        node_traced = net.node_traced
+        
+        for nid in node_list:
+            current_state = node_states[nid]
+            # if the current node is traced, it should not be possible to move from 'S'
+            if node_traced[nid] and current_state == 'S':
+                continue
+            for to, rate_func in trans[current_state]:
                 # rate_func is a lambda expression waiting for a net and a node id
-                rate = rate_func(self.net, nid)
+                rate = rate_func(net, nid)
                 # increment time with the current rate
-                trans_time = self.time + rate
+                trans_time = time + rate
                 if trans_time < best_time:
                     best_time = trans_time
                     from_next = current_state
@@ -41,35 +54,71 @@ class Simulation():
         to_next = None
         best_time = float('inf')
         
-        traceable_states = ['S', 'E', 'I', 'Ia', 'Is']
+        # local vars for efficiency
+        net = self.net
+        trans = self.trans
+        time = self.time
+        node_list = net.node_list
+        node_traced = net.node_traced
+        node_states = net.node_states
         
-        # Lazily initialize a dict with the correct transition functions for tracing (we need all state -> T -> func entries)
-        # This is a bit convoluted because the nested dict state -> state -> func is cached for efficiency reasons
-        # Hence the items are actually state -> (state, func) 
+        traceable_states = ['S', 'E', 'I', 'Ia', 'Is']
+        traced_state = 'T'
+        noncompliant_state = 'N'
+        
+        # Lazily initialize a dict with the correct transition functions for tracing (we need all 'state -> T -> func' entries)
+        # This is a bit convoluted because the 'items' of the nested dict 'state -> state -> func' are cached for efficiency reasons
+        # Hence the entries become 'state -> (state, func)'
         try:
             trace_funcs = self.trace_funcs
+            noncompliance_rate_func = self.noncompliance
         except:
+            # collect only the tracing function that actually exist in self.trans based on each state
             trace_funcs = {
-                s : dict(self.trans[s])['T']
-                for s in traceable_states
+                s : dict(trans[s])[traced_state] for s in traceable_states if traced_state in dict(trans[s])  
             }
             self.trace_funcs = trace_funcs
+            
+            # get the noncompliance function if one exists in transitions
+            noncompliance_rate_func = dict(self.trans[traced_state])[noncompliant_state] if traced_state in self.trans else None
+            self.noncompliace = noncompliance_rate_func
 
-        # Filter out nodes that can actually be traced
-        traced_nodes = np.array(self.net.node_traced)
-        correct_state_nodes = np.isin(self.net.node_states, traceable_states)
-        not_traced = np.where(~traced_nodes & correct_state_nodes)[0]
+            
+        # Filter out nodes that can actually be traced - i.e. not traced yet and from the traceable_states
+        not_traced_inf = []
+        # Also collect a list of the traced nodes that are still dangerous (E, I,)
+        traced_inf = []
+        for nid in node_list:
+            # check if there is any tracing function instantiated before collection non-traced points
+            if trace_funcs and not node_traced[nid] and node_states[nid] in traceable_states:
+                not_traced_inf.append(nid)
+            # check if there is a noncompliance rate func before collecting the traced points that are actually dangerous
+            elif noncompliance_rate_func and node_traced[nid] and node_states[nid] in traceable_states:
+                traced_inf.append(nid)
         
-        for nid in not_traced:
-            current_state = self.net.node_states[nid]
+        # look for tracing events
+        for nid in not_traced_inf:
+            current_state = node_states[nid]
             # rate_func is a lambda expression waiting for a net and a node id
-            rate = trace_funcs[current_state](self.net, nid)
+            rate = trace_funcs[current_state](net, nid)
             # increment time with the current rate
-            trans_time = self.time + rate
+            trans_time = time + rate
             if trans_time < best_time:
                 best_time = trans_time
                 from_next = current_state
-                to_next = 'T'
+                to_next = traced_state
+                id_next = nid
+        
+        # look for noncompliance events       
+        for nid in traced_inf:
+            # rate_func is a lambda expression waiting for a net and a node id
+            rate = noncompliance_rate_func(net, nid, time)
+            # increment time with the current rate
+            trans_time = time + rate
+            if trans_time < best_time:
+                best_time = trans_time
+                from_next = traced_state
+                to_next = noncompliant_state
                 id_next = nid
                 
         if id_next is None:
@@ -82,8 +131,8 @@ class Simulation():
         self.net.change_state_fast_update(e.node, e.to)
         self.time = e.time
         
-    def run_trace_event(self, e):
-        self.net.change_traced_state_fast_update(e.node)
+    def run_trace_event(self, e, to_traced=True):
+        self.net.change_traced_state_fast_update(e.node, to_traced, e.time)
         self.time = e.time
         
     def run_event_separate_traced(self, e):

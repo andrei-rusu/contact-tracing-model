@@ -20,7 +20,8 @@ STATES_COLOR_MAP = {
     'H': 'cyan',
     'T': 'blue',
     'R': 'lime',
-    'D': 'gray'
+    'D': 'gray',
+    'N': 'purple'
 }
 
 class Network(nx.Graph):
@@ -32,15 +33,16 @@ class Network(nx.Graph):
         self.pos = None
         # Overlap after noising - initially perfect overlap, changes after calling 'noising_links'
         self.overlap = 1
-        # Maintain node states and neighbor count
+        # Maintain 'active' (not orphans) node list + neighbor counts; and inf + traced states for all nodes
         self.node_list = []
         self.node_states = []
         self.node_traced = []
         self.node_counts = defaultdict(dict)
+        self.traced_time = {}
         
         super().__init__(**kwds)
         
-    def init_random(self, n=200, k=10, weighted=False):
+    def init_random(self, n=200, k=10, rem_orphans=False, weighted=False):
         # Add nodes in state 'S'
         self.add_mult(n, 'S')
         # Add random links with degree k
@@ -52,15 +54,16 @@ class Network(nx.Graph):
             weights = random.choices(range(1,10), k=remaining_links)
             links_to_create = [links_to_create[i] + (weights[i],) for i in range(remaining_links)]
         # Add the random edges with/without weights depending on 'weighted' parameter
-        self.add_links(links_to_create)
-                
+        # This also updates the active node list and the traced array based on orphan encounter
+        self.add_links(links_to_create, update=False, rem_orphans=rem_orphans)
+                             
         return self
         
-    def noising_links(self, overlap=None, z_add=0, z_rem=5, weighted=False, update=True):
+    def noising_links(self, overlap=None, z_add=0, z_rem=5, uptake=None, weighted=False, update=True):
+        # Recover total num of nodes
+        n = self.number_of_nodes()
         # Recover average degree
         k = self.avg_degree()
-        # Recover num of nodes
-        n = len(self.node_list)
         
         # If no overlap value, use z_add & z_rem
         if overlap is None:
@@ -75,7 +78,7 @@ class Network(nx.Graph):
         # Current edge set (prior to noising, nodes in each edge tuple are sorted)
         current_edges = {tuple(sorted(edge)) for edge in self.edges}
                         
-        # Random adding z_add on average - this may be 0
+        # Random adding z_add on average - this is 0 in case of digital tracing
         remaining_links_add = int(n * z_add / 2)
         links_to_add = rand_pairs_excluding(n, remaining_links_add, to_exclude=current_edges) if z_add else []
                     
@@ -90,43 +93,43 @@ class Network(nx.Graph):
             self.update_counts()
         
         return self
-                
     
     def init_states(self, state='S'):
-        # Set all nodes back to S
-        self.node_states = [state] * len(self.node_list)
- 
+        # Set all nodes back to state
+        n = self.number_of_nodes()
+        self.node_states = [state] * n
+        # the boolean tracing array must reflect that only the active nodes are NOT traced
+        self.node_traced = np.isin(list(self), self.node_list, invert=True).tolist()
 
-    def add(self, state='S'):
+    def add(self, state='S', traced=False):
         current = next(self.cont)
         self.add_node(current)
-        # Update cached node list and states
-        self.node_list.append(current)
         self.node_states.append(state)
-        self.node_traced.append(False)
+        self.node_traced.append(traced)
         
-    def add_mult(self, n=200, state='S'):
+    def add_mult(self, n=200, state='S', traced=False):
         current = next(self.cont)
         self.add_nodes_from(range(current, current + n))
-        # Update cached node list and states
-        self.node_list = list(self)
         self.node_states += [state] * n
-        self.node_traced += [False] * n
+        self.node_traced += [traced] * n
         # increment count to reflect n additions
         self.cont = itertools.count(current + n)
         
     def update_counts(self, nlist=None):
-        # if nlist not given, update_counts for all nodes
+        # local for efficiency
+        counts = self.node_counts
+        states = self.node_states
+        # if nlist not given, update_counts for all 'active' nodes
         if nlist is None:
             nlist = self.node_list
         for nid in nlist:
             # get the list of neighbour states and num of traced
-            neigh_states_for_node = [self.node_states[i] for i in self.neighbors(nid)]
+            neigh_states_for_node = [states[i] for i in self.neighbors(nid)]
             # update counts
-            self.node_counts[nid] = Counter(neigh_states_for_node)
+            counts[nid] = Counter(neigh_states_for_node)
             
     def update_counts_with_traced(self, nlist=None):
-        # if nlist not given, update_counts for all nodes
+        # if nlist not given, update_counts for all 'active' nodes
         if nlist is None:
             nlist = self.node_list
         for nid in nlist:
@@ -151,32 +154,49 @@ class Network(nx.Graph):
     def get_state(self, nid):
         return self.node_states[nid]
         
-    def change_state(self, nid, state='I', update=True):
-        self.node_states[nid] = state
+    def change_state(self, nids, state='I', update=True):
+        for nid in np.atleast_1d(nids):
+            self.node_states[nid] = state
         if update:
             self.update_counts()
                 
     def change_state_fast_update(self, nid, state):
-        old_state = self.node_states[nid]
+        # local vars for efficiency
+        states = self.node_states
         # update counts if NOT traced, NOT hospitalized, NOT exposed without being infectious:
+        old_state = states[nid]
         if state != 'E' and not self.node_traced[nid] and old_state != 'H':
-            old_state = self.node_states[nid]
+            counts = self.node_counts
             for neigh in self.neighbors(nid):
-                self.node_counts[neigh][old_state] -= 1
-                self.node_counts[neigh][state] += 1
-        self.node_states[nid] = state
+                counts_neigh = counts[neigh]
+                counts_neigh[old_state] -= 1
+                counts_neigh[state] += 1
+        states[nid] = state
             
-    def change_traced_state_fast_update(self, nid):
+    def change_traced_state_fast_update(self, nid, to_traced, time_of_trace):
         """
         When using separate_traced, the T state is independent of all the other states and represented via a flag
         Counts are updated as-if this would be an actual state change: 
-         - node_counts for neighbor node -> for current state of nid decrement, for 'T' increment
+         - node_counts for neighbor node -> for current inf state of nid decrease/increase, for 'T' increment/decremenet
+         based on to_traced True/False
         """
-        self.node_traced[nid] = True
+        # local vars for efficiency
+        counts = self.node_counts
         inf_state = self.node_states[nid]
+        
+        # switch traced flag for the current node
+        self.node_traced[nid] = to_traced
+        count_val = -1 # to be used for updating counts (default is for noncompliance)
+        # If this is a traced event, count_val = 1, update time of tracing
+        if to_traced:
+            count_val = 1
+            self.traced_time[nid] = time_of_trace
+        
         for neigh in self.neighbors(nid):
-            self.node_counts[neigh][inf_state] -= 1
-            self.node_counts[neigh]['T'] += 1
+            neigh_counts = counts[neigh]
+            if inf_state in ['I', 'Ia', 'Is']:
+                neigh_counts[inf_state] += -count_val
+            neigh_counts['T'] += count_val
                 
     def add_link(self, nid1, nid2, weight=1, update=False):
         self.add_edge(nid1, nid2, weight=weight)
@@ -188,7 +208,7 @@ class Network(nx.Graph):
         if update:
             self.update_counts([nid1, nid2])
             
-    def add_links(self, lst, weight=1, update=False):
+    def add_links(self, lst, weight=1, update=False, rem_orphans=True):
         len_elem = len(lst[0])
         # If only source + target nodes provided, add specified 'weight' parameter as weight
         if len_elem == 2:
@@ -196,6 +216,13 @@ class Network(nx.Graph):
         # If weights provided alognside nodes, ignore weight parameter
         elif len_elem == 3:
             self.add_weighted_edges_from(lst)
+        
+        self.node_list = list(self)
+        if rem_orphans:
+            for nid in self.node_list:
+                if self.degree(nid) == 0:
+                    self.node_list.remove(nid)
+                    self.node_traced[nid] = True     
         if update:
             self.update_counts()
             
@@ -223,9 +250,9 @@ class Network(nx.Graph):
         if show:
             plt.show()    
     
-def get_random(n=200, k=10, weighted=False):
+def get_random(n=200, k=10, rem_orphans=False, weighted=False):
     G = Network()
-    return G.init_random(n, k, weighted)
+    return G.init_random(n, k, rem_orphans, weighted)
        
 def get_dual(G, overlap=None, z_add=0, z_rem=5, weighted=False):
     N = deepcopy(G)
