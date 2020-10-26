@@ -7,18 +7,18 @@
 #PBS -l nodes=1:ppn=1
 #PBS -l walltime=00:30:00
 #PBS -t 1
-#PBS -e data/run/error
-#PBS -o data/run/output
-
-#Change to directory from which job was submitted
-cd $PBS_O_WORKDIR
+#PBS -e data/run/job_output/pbs/error
+#PBS -o data/run/job_output/pbs/output
 
 if [ -z "$PBS_ARRAYID" ]
 then
     PBS_ARRAYID=0
 fi
 
-newfile="data/run/simresult"$PBS_ARRAYID".txt"
+#Change to directory from which job was submitted
+cd $PBS_O_WORKDIR
+
+newfile="data/run/simresult"$PBS_ARRAYID".json"
 
 module load conda/4.4.0
 source activate contact

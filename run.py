@@ -2,7 +2,6 @@ import argparse
 import random
 import numpy as np
 import matplotlib.pyplot as plt
-import math
 
 from tqdm import tqdm
 from time import sleep
@@ -30,7 +29,7 @@ PARAMETER_DEFAULTS = {
     'overlap': .08, 'zadd': 0, 'zrem': 5, # net overlap translated to z_rem / z_add & z_rem OR specific z_add, z_rem if overlap is None
     'nnets': 1, 'niters': 1, 'nevents': 0, # running number of nets, iterations per net and events (if 0, until no more events)
     'multip': False, # whether multiprocessing is used
-    'draw': False, 'draw_iter': False, 'dual': True, 'seed': 43,
+    'draw': False, 'draw_iter': False, 'dual': True, 'seed': None,
     # None -> full_summary never called; False -> no summary printing, True -> print summary as well
     'summary_print': None,
     'summary_splits': 1000, # how many time splits to use for the epidemic summary

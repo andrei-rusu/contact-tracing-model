@@ -7,8 +7,8 @@
 #PBS -l nodes=1:ppn=15
 #PBS -l walltime=04:30:00
 #PBS -t 1
-#PBS -e data/run/job_output/error
-#PBS -o data/run/job_output/output
+#PBS -e data/run/job_output/pbs/error
+#PBS -o data/run/job_output/pbs/output
 
 # If this is run as a bash script, no PBS var will be set, so set vars
 if [ -z "$PBS_O_WORKDIR" ]
@@ -45,7 +45,6 @@ python run.py \
     --nnets 8 \
     --niters 20 \
     --separate_traced True \
-    --seed None \
     --pa $pa \
     --taut $taut \
     --taur $taur > $newfile

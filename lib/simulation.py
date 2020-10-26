@@ -99,15 +99,16 @@ class Simulation():
         # look for tracing events
         for nid in not_traced_inf:
             current_state = node_states[nid]
-            # rate_func is a lambda expression waiting for a net and a node id
-            rate = trace_funcs[current_state](net, nid)
-            # increment time with the current rate
-            trans_time = time + rate
-            if trans_time < best_time:
-                best_time = trans_time
-                from_next = current_state
-                to_next = traced_state
-                id_next = nid
+            if current_state in trace_funcs:
+                # rate_func is a lambda expression waiting for a net and a node id
+                rate = trace_funcs[current_state](net, nid)
+                # increment time with the current rate
+                trans_time = time + rate
+                if trans_time < best_time:
+                    best_time = trans_time
+                    from_next = current_state
+                    to_next = traced_state
+                    id_next = nid
         
         # look for noncompliance events       
         for nid in traced_inf:

@@ -1,0 +1,49 @@
+Running SLURM prolog script on gold52.cluster.local
+Running SLURM prolog script on gold53.cluster.local
+===============================================================================
+===============================================================================
+Job started on Mon Oct 26 15:21:12 GMT 2020
+Job started on Mon Oct 26 15:21:14 GMT 2020
+Job ID          : 1019034
+Job ID          : 1019033
+Job name        : Epidemic Grid Simulation
+Job name        : Epidemic Grid Simulation
+WorkDir         : /mainfs/home/ar5g15/contact-tracing-model
+WorkDir         : /mainfs/home/ar5g15/contact-tracing-model
+Command         : /mainfs/home/ar5g15/contact-tracing-model/slurm_grid_run.sh
+Command         : /mainfs/home/ar5g15/contact-tracing-model/slurm_grid_run.sh
+Partition       : serial
+Partition       : serial
+Num hosts       : 1
+Num hosts       : 1
+Num cores       : 20
+Num cores       : 20
+Num of tasks    : 20
+Num of tasks    : 20
+Hosts allocated : gold52
+Hosts allocated : gold53
+Job Output Follows ...
+Job Output Follows ...
+===============================================================================
+===============================================================================
+==============================================================================
+Running epilogue script on gold52.
+
+Submit time  : 2020-10-26T15:20:54
+Start time   : 2020-10-26T15:20:54
+End time     : 2020-10-26T15:24:08
+Elapsed time : 00:03:14 (Timelimit=00:30:00)
+
+Job ID: 1019034
+Array Job ID: 1019033_1
+Cluster: i5
+User/Group: ar5g15/fp
+State: COMPLETED (exit code 0)
+Nodes: 1
+Cores per node: 20
+CPU Utilized: 00:10:09
+CPU Efficiency: 15.70% of 01:04:40 core-walltime
+Job Wall-clock time: 00:03:14
+Memory Utilized: 5.72 GB
+Memory Efficiency: 2.48% of 230.86 GB
+
