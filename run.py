@@ -576,10 +576,6 @@ class EngineOne(Engine):
             m['time'] = e.time
             result.append(StatsEvent(**m))
             
-            if e.time < 0:
-                print("Error for " + str(e.node) + " " + e.fr + " " + e.to)
-                stop_simulation = True
-            
 #             if self.args.draw_iter:
 #                 print('State after events iteration ' + str(i) + ':')
 #                 self.true_net.draw(seed=args.seed)

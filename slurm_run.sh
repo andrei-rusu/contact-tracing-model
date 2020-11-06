@@ -20,24 +20,28 @@ fi
 #Change to directory from which job was submitted
 cd "$HOME/contact-tracing-model"
 
-newfile="data/run/batch2_slurm/simresult"$SLURM_ARRAY_TASK_ID".json"
+NETSIZE=200
+
+# newfile="data/run/batch2_slurm/simresult"$SLURM_ARRAY_TASK_ID".json"
+newfile="data/run/batch2_slurm/simresult_"$NETSIZE".json"
 
 module load conda/py3-latest
 source activate contact
 
 python run.py \
-    --netsize 100 \
+    --netsize $NETSIZE \
     --k 10 \
-    --multip False \
+    --multip True \
     --model 'covid' \
-    --dual True \
-    --overlap .8 \
-    --nnets 1 \
-    --niters 1 \
+    --dual 1 \
+    --overlap 1 \
+    --uptake .5 \
+    --maintain-overlap True \
+    --nnets 3 \
+    --niters 3 \
     --separate_traced True \
-    --seed $SLURM_ARRAY_TASK_ID \
-    --taut .1 \
-    --taur .005 > $newfile
+    --taut .01 \
+    --taur .01 > $newfile
 
 # Remove running artefacts from sim results
 sed -i -n '/args/,$p' $newfile
