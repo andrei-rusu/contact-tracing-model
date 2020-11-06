@@ -3,13 +3,16 @@ import networkx as nx
 import itertools
 import random
 from copy import deepcopy
+
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
 from lib.utils import rand_pairs, rand_pairs_excluding, get_z_for_overlap, get_overlap_for_z
+from lib.simulation import Simulation
 
 STATES_COLOR_MAP = {
     'S': 'darkgreen',
@@ -26,6 +29,9 @@ STATES_COLOR_MAP = {
 
 class Network(nx.Graph):
     
+    def get_simulator(self, trans):
+        return Simulation(self, trans)
+    
     def __init__(self, **kwds):
         # Atomic Counter for node ids
         self.cont = itertools.count()
@@ -39,6 +45,7 @@ class Network(nx.Graph):
         self.node_traced = []
         self.node_counts = defaultdict(dict)
         self.traced_time = {}
+        self.noncomp_time = {}
         
         super().__init__(**kwds)
         
@@ -59,33 +66,70 @@ class Network(nx.Graph):
                              
         return self
         
-    def noising_links(self, overlap=None, z_add=0, z_rem=5, uptake=None, weighted=False, update=True):
+    def noising_links(self, overlap=None, z_add=0, z_rem=5, keep_nodes_percent=1, maintain_overlap=True, update=True):
         # Recover total num of nodes
         n = self.number_of_nodes()
         # Recover average degree
         k = self.avg_degree()
         
-        # If no overlap value, use z_add & z_rem
-        if overlap is None:
-            # Average degree k, z_add, z_rem used to calculate overlap after noising
-            self.overlap = get_overlap_for_z(k, z_add, z_rem)
-        # If overlap given, calculate either z_add and z_rem
-        else:
-            self.overlap = overlap
-            # if z_add = 0, z_add will stay 0 while z_rem = z; OTHERWISE z_add = z_rem = z
-            z_add, z_rem = get_z_for_overlap(k, overlap, include_add = z_add)
-            
         # Current edge set (prior to noising, nodes in each edge tuple are sorted)
         current_edges = {tuple(sorted(edge)) for edge in self.edges}
-                        
-        # Random adding z_add on average - this is 0 in case of digital tracing
-        remaining_links_add = int(n * z_add / 2)
-        links_to_add = rand_pairs_excluding(n, remaining_links_add, to_exclude=current_edges) if z_add else []
-                    
-        # Random removing z_rem on average
-        remaining_links_rem = int(n * z_rem / 2)
-        links_to_rem = random.sample(current_edges, remaining_links_rem)
         
+        # links to add and rem lists
+        links_to_add, links_to_rem = [], []
+        remaining_links_rem = 0
+        
+        # If we are interested in maintaining the overlap, then the correct z_add and z_rem will be calculated based on the params
+        if maintain_overlap:
+            # If no overlap value, use z_add & z_rem
+            if overlap is None:
+                # Average degree k, z_add, z_rem used to calculate overlap after noising
+                self.overlap = get_overlap_for_z(k, z_add, z_rem)
+            # If overlap given, calculate z_add and z_rem; SUPPLIED z_add and z_rem are mostly IGNORED
+            else:
+                self.overlap = overlap
+                # if z_add = 0, z_add will stay 0 while z_rem = z; OTHERWISE z_add = z_rem = z
+                z_add, z_rem = get_z_for_overlap(k, overlap, include_add = z_add)
+                
+            # Random adding z_add on average - this should be 0 in case of digital tracing networks
+            remaining_links_add = int(n * z_add / 2)
+            links_to_add = rand_pairs_excluding(n, remaining_links_add, to_exclude=current_edges) if z_add else []
+
+            # Random removing z_rem on average - this will also cover the case keep_nodes_percent < 1
+            remaining_links_rem = int(n * z_rem / 2)
+            #
+            # The logic for removing edges is done below (need to account for keep_nodes_percent value)
+        
+        
+        # Simple case, no node's edges are removed completely from the network unless the randomness does it
+        if keep_nodes_percent == 1:
+            links_to_rem = random.sample(current_edges, remaining_links_rem)
+            
+        # The links of certain nodes will be completely removed if keep_nodes_percent is below 1 (<100%)
+        else:
+            untraceable_nodes = random.sample(self.node_list, int(round(1 - keep_nodes_percent, 2) * n))
+            untraceable_edges = {tuple(sorted(edge)) for edge in self.edges(untraceable_nodes)}
+            len_untraceable_edges = len(untraceable_edges)
+            
+            # update the total links_to_rem list
+            links_to_rem += untraceable_edges
+            
+            # maintain_overlap tries to ensure the overlap value is also met in the keep_nodes_percent < 1 case
+            # if this value cannot be met, an error will be thrown
+            if maintain_overlap:
+                remaining_links_rem -= len_untraceable_edges
+                if remaining_links_rem >= 0:
+                    # The rest of the edges until the overlap value is met are to be removed at random
+                    links_to_rem += random.sample(current_edges - untraceable_edges, remaining_links_rem)
+                else:
+                    raise ValueError("The value of keep_nodes_percent is too small for maintaining the selected overlap!")
+            # in the case the supplied overlap gets ultimately ignored, a new value needs to be calculated for it
+            else:
+                actual_z_add = 0
+                actual_z_rem = len_untraceable_edges * 2 / n
+                self.overlap = get_overlap_for_z(k, actual_z_add, actual_z_rem)
+
+                
         self.add_edges_from(links_to_add)
         self.remove_edges_from(links_to_rem)
         
@@ -182,21 +226,28 @@ class Network(nx.Graph):
         """
         # local vars for efficiency
         counts = self.node_counts
+        # get this node's current infection network state
         inf_state = self.node_states[nid]
+        # update counts only if the infection network state of this node is an infectious state
+        update_infectious_counts = (inf_state in ['I', 'Ia', 'Is'])
         
         # switch traced flag for the current node
         self.node_traced[nid] = to_traced
-        count_val = -1 # to be used for updating counts (default is for noncompliance)
+        
         # If this is a traced event, count_val = 1, update time of tracing
         if to_traced:
             count_val = 1
             self.traced_time[nid] = time_of_trace
+        # for noncomploance, count_val = -1
+        else:
+            count_val = -1
+            self.noncomp_time[nid] = time_of_trace
         
         for neigh in self.neighbors(nid):
             neigh_counts = counts[neigh]
-            if inf_state in ['I', 'Ia', 'Is']:
-                neigh_counts[inf_state] += -count_val
             neigh_counts['T'] += count_val
+            if update_infectious_counts:
+                neigh_counts[inf_state] -= count_val
                 
     def add_link(self, nid1, nid2, weight=1, update=False):
         self.add_edge(nid1, nid2, weight=weight)
@@ -217,6 +268,7 @@ class Network(nx.Graph):
         elif len_elem == 3:
             self.add_weighted_edges_from(lst)
         
+        # Set the active node list (if rem_orphans=False, these are all the nodes)
         self.node_list = list(self)
         if rem_orphans:
             for nid in self.node_list:
@@ -228,32 +280,68 @@ class Network(nx.Graph):
             
     def avg_degree(self):
         return np.mean(list(dict(self.degree()).values()))
+    
+    def compute_efforts_and_check_end_config(self):
+        # local for efficiency
+        node_traced = self.node_traced
+        node_states = self.node_states
+        node_counts = self.node_counts
+        # if this var changes to False, the network is not yet in the ending configuration (all end states)
+        end_config = True
+        # compute random tracing effort -> we only care about the number of traceable_states ('S', 'E', 'I', 'Ia', 'Is')
+        randEffortAcum = 0
+        # compute active tracing effort -> we only care about the neighs of nodes in traceable_states ('S', 'E', 'I', 'Ia', 'Is')
+        tracingEffortAccum = 0
+        for nid in self.node_list:
+            current_state = node_states[nid]
+            if not node_traced[nid] and current_state in ['S', 'E', 'I', 'Ia', 'Is']:
+                randEffortAcum += 1
+                tracingEffortAccum += node_counts[nid]['T']
+            # if one state is not a final configuration state, continue simulation
+            if current_state not in ['S', 'R', 'D']:
+                end_config = False
+                
+        return randEffortAcum, tracingEffortAccum, end_config
+    
         
-    def draw(self, pos=None, show=True, seed=43):
+    def draw(self, pos=None, show=True, ax=None, seed=43):
         # for the true network, colors for all nodes are based on their state
         if self.overlap == 1:
             colors = list(map(lambda x: STATES_COLOR_MAP[x], self.node_states))
-        # for the dual network, when no explicit T state set, give priority to self.node_traced == True as if 'T' state
+        # for the dual network, when no explicit T state set, give priority to node_traced == True as if 'T' state
+        # also give priority to node_traced == False as if 'N' state IF the node has been traced before (has a traced_time)
         else:
-            colors = [STATES_COLOR_MAP['T'] if traced else STATES_COLOR_MAP[state] for state, traced in zip(self.node_states, self.node_traced)]
+            colors = [None] * self.number_of_nodes()
+            for nid, (state, traced) in enumerate(zip(self.node_states, self.node_traced)):
+                if traced:
+                    colors[nid] = STATES_COLOR_MAP['T']
+                elif nid in self.traced_time:
+                    colors[nid] = STATES_COLOR_MAP['N']
+                else:
+                    colors[nid] = STATES_COLOR_MAP[state]
+
         # by doing this we avoid overwriting self.pos with pos when we just want a different layout for the drawing
         pos = pos if pos else self.pos
         # if both were None, generate a new layout with the seed and use it for drawing
         if not pos:
             self.generate_layout(seed)
             pos = self.pos
+            
+        # sometimes an iterable of axis may be supplied instead of one Axis object, so get the first element
+        if isinstance(ax, Iterable): ax = ax[0]
         # draw graph
-        nx.draw(self, pos=pos, node_color=colors, with_labels=True)
+        nx.draw(self, pos=pos, node_color=colors, ax=ax, with_labels=True)
         # create color legend
         plt.legend(handles=[mpatches.Patch(color=color, label=state) for state, color in STATES_COLOR_MAP.items()])
         
         if show:
-            plt.show()    
+            plt.show()
+            
     
 def get_random(n=200, k=10, rem_orphans=False, weighted=False):
     G = Network()
     return G.init_random(n, k, rem_orphans, weighted)
        
-def get_dual(G, overlap=None, z_add=0, z_rem=5, weighted=False):
+def get_dual(G, overlap=None, z_add=0, z_rem=5, keep_nodes_percent=1, maintain_overlap=True):
     N = deepcopy(G)
-    return N.noising_links(overlap, z_add, z_rem, weighted, update=True)
+    return N.noising_links(overlap, z_add, z_rem, keep_nodes_percent, maintain_overlap, update=True)

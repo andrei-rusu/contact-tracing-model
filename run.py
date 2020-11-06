@@ -10,7 +10,7 @@ from collections import defaultdict
 from pathos.multiprocessing import ProcessingPool as Pool
 
 from lib import network
-from lib.utils import tqdm_redirect, expFactorTimesCount, expFactorTimesTimeDif
+from lib.utils import tqdm_redirect, expFactorTimesCount, expFactorTimesTimeDif, ListDelegator
 from lib.simulation import Simulation
 from lib.stats import StatsProcessor, StatsEvent
 from lib.models import get_transitions_for_model, add_trans
@@ -26,16 +26,20 @@ PARAMETER_DEFAULTS = {
     'taur': 0.1, 'taut': 0.1, # random tracing (testing) + contract-tracing rate which will be multiplied with no of traced contacts
     'noncomp': .002,
     'netsize': 1000, 'k': 10, # net size and avg degree
-    'overlap': .08, 'zadd': 0, 'zrem': 5, # net overlap translated to z_rem / z_add & z_rem OR specific z_add, z_rem if overlap is None
+    'overlap': .8, 'overlap_two': .4, # overlaps for dual nets (second is used only if dual == 2)
+    'zadd': 0, 'zrem': 5, # if no overlap given, these values are used for z_add and z_rem; z_add also informs overlap of additions
+    'zadd_two': 0, 'zrem_two': 5, # these are used only if dual == 2 and no overlap_manual is given
+    'uptake': 1, 'maintain_overlap': True, 
     'nnets': 1, 'niters': 1, 'nevents': 0, # running number of nets, iterations per net and events (if 0, until no more events)
     'multip': False, # whether multiprocessing is used
-    'draw': False, 'draw_iter': False, 'dual': True, 'seed': None,
+    'draw': False, 'draw_iter': False, 'dual': 1, 'seed': None,
     # None -> full_summary never called; False -> no summary printing, True -> print summary as well
     'summary_print': None,
     'summary_splits': 1000, # how many time splits to use for the epidemic summary
     'separate_traced': False, # whether to have the Traced state separate from all the other states
     'model': 'sir', # can be sir, seir or covid
     'first_inf': 1,
+    'rem_orphans': False,
     # COVID model specific parameters:
     'pa': 0.2, # probability of being asymptomatic (could also be 0.5)
     'rel_beta': .5, # relative infectiousness of Ip/Ia compared to Is (Imperial paper + Medrxiv paper)
@@ -45,7 +49,6 @@ PARAMETER_DEFAULTS = {
     'lamdahr': [0, .083, .033], # If hospitalized, daily rate entering in R based on age category
     'lamdahd': [0, .0031, .0155], # If hospitalized, daily rate entering in D based on age category
     'group': 1, # Age-group; Can be 0 - children, 1 - adults, 2 - senior
-    'rem_orphans': False,
 }
 
 def main(args):
@@ -85,7 +88,7 @@ def main(args):
     
     for tr_rate in tracing_rates:
         
-        print('For taut =', tr_rate)
+        print('For taut =', tr_rate, ', and taur =', args.taur)
 
         # Tracing for 'S', 'E' happens over know_net depending only on the traced neighbor count of nid (no testing possible)
         tr_func = (lambda net, nid: expFactorTimesCount(net, nid, state='T', lamda=tr_rate, base=0)) if tr_rate else None
@@ -103,6 +106,7 @@ def main(args):
             tr_and_test_rel_func = \
                 lambda net, nid: expFactorTimesCount(net, nid, state='T', lamda=tr_rate, base=args.taur * args.rel_taur)
         
+        # Update transition parameters based on the abvoe defined tracing functions
         if is_covid:
             # We assume 'I(p)' will not be spotted via testing (false negatives in the first week)
             add_trans(trans_know_items, 'I', 'T', tr_func)
@@ -126,10 +130,18 @@ def main(args):
             know_net = None
                         
             if args.dual:
-                # Priority will be given to the overlap value
-                # Normally z_add = z_rem = z, but if z_add = 0 then only z_rem=z is produced
-                # If overlap is None, zadd and zrem values are used
-                know_net = network.get_dual(true_net, args.overlap, args.zadd, args.zrem)
+                # First dual net depends on both overlap and uptake (this is usually the digital contact tracing net)
+                know_net = network.get_dual(true_net, args.overlap, args.zadd, args.zrem, args.uptake, args.maintain_overlap)
+                
+                # if 2 dual networks selected, create the second network and add both to a ListDelegator
+                if args.dual == 2:
+                    # Second net depends only on overlap_two - i.e. uptake = 1 (this is usually the manual tracing net)
+                    know_net_two = network.get_dual(true_net, args.overlap_two, args.zadd_two, args.zrem_two, 
+                                                  keep_nodes_percent=1, maintain_overlap=True)
+                    
+                    # know_net becomes a ListDelegator of the 2 networks
+                    know_net = ListDelegator(know_net, know_net_two)
+                    
                 
                 # Object used during Multiprocessing of Network simulation events
                 engine = EngineDual(
@@ -203,24 +215,22 @@ class EngineDual(Engine):
         # local vars for efficiency
         args = self.args
         true_net = self.true_net
+        # Note: know_net may be a ListDelegator of tracing networks
         know_net = self.know_net
-        node_list = know_net.node_list
 
         # Draw network if flag
         if args.draw:
-            plt.figure(figsize=(14, 5))
-            plt.subplot(121)
-            plt.title('True Network')
-            self.true_net.draw(show=False)
-            plt.subplot(122)
-            plt.title('Tracing Network')
-            self.know_net.draw(self.true_net.pos, show=False)
+            # we make plots for the true network + all the dual networks
+            fix, ax = plt.subplots(nrows=1, ncols=int(args.dual) + 1, figsize=(16, 5))
+            ax[0].set_title('True Network')
+            self.true_net.draw(seed=args.seed, show=False, ax=ax[0])
+            ax[1].set_title('Tracing Networks')
+            self.know_net.draw(pos=true_net.pos, show=False, ax=ax[1:])
             plt.show()
-            
 
         # simulation objects
-        sim_true = Simulation(true_net, self.trans_true)
-        sim_know = Simulation(know_net, self.trans_know)
+        sim_true = true_net.get_simulator(self.trans_true)
+        sim_know = know_net.get_simulator(self.trans_know)
         
         # number of initial infected
         inf = args.first_inf
@@ -260,18 +270,33 @@ class EngineDual(Engine):
                 # If no more events left, break out of the loop
                 if e1 is None and e2 is None:
                     break
-
-                e = e1 if (e2 is None or (e1 is not None and e1.time < e2.time)) else e2
                 
+                # get all event candidates, assign 'inf' to all Nones, and select the event with the smallest 'time' value
+                candidates = np.append(np.atleast_1d(e2), e1)
+                times = [e_candidate.time if e_candidate is not None else float('inf') for e_candidate in candidates]
+                e = candidates[np.argmin(times)]
+                                
                 # if the event chosen is a tracing event, separate logic follows (NOT updating event.FROM counts!)
                 if e.to == 'T':
+                    # the update to total traced counts is done only once (ignore if same nid is traced again)
+                    if e.node not in true_net.traced_time:
+                        m['totalTraced'] += 1
+                        # if S -> T then a person has been incorrectly traced
+                        if e.fr == 'S': m['totalFalseTraced'] += 1
+                        if e.fr == 'E': m['totalExposedTraced'] += 1
+                    
                     sim_true.run_trace_event(e, True)
                     sim_know.run_trace_event(e, True)
+                    
                 # Non-compliance with isolation event
                 elif e.fr == 'T':
+                    # the update to total noncompliant counts is done only once (ignore if same nid is noncompliant again)
+                    if e.node not in true_net.noncomp_time:
+                        m['totalNonCompliant'] += 1
+                        
                     sim_true.run_trace_event(e, False)
                     sim_know.run_trace_event(e, False)
-                    m['totalNonCompliant'] += 1
+                    
                 # otherwise, normal logic follows (with update counts)
                 else:
                     sim_true.run_event(e)
@@ -285,6 +310,7 @@ class EngineDual(Engine):
                         m['nE'] -= 1
                     elif e.fr == 'H':
                         m['nH'] -= 1
+            
             else:
                 # get events on the known network ONLY IF a tracing rate actually exists
                 e2 = sim_know.get_next_event() if self.tr_rate or args.taur else None
@@ -292,8 +318,11 @@ class EngineDual(Engine):
                 # If no more events left, break out of the loop
                 if e1 is None and e2 is None:
                     break
-
-                e = e1 if (e2 is None or (e1 is not None and e1.time < e2.time)) else e2
+                    
+                # get all event candidates, assign 'inf' to all Nones, and select the event with the smallest 'time' value
+                candidates = np.append(np.atleast_1d(e2), e1)
+                times = [e_candidate.time if e_candidate is not None else float('inf') for e_candidate in candidates]
+                e = candidates[np.argmin(times)]
 
                 sim_true.run_event(e)
                 sim_know.run_event(e)
@@ -308,7 +337,16 @@ class EngineDual(Engine):
                 elif e.fr == 'H':
                     m['nH'] -= 1
                     
-            # event.TO Updates are common for all models
+                # Update 'T' counts if a tracing event was chosen
+                # Note that this could double count if T -> N -> T multiple times
+                if e.to == 'T':
+                    m['totalTraced'] += 1
+                    # if S -> T then a person has been incorrectly traced
+                    if e.fr == 'S': m['totalFalseTraced'] += 1
+                    if e.fr == 'E': m['totalExposedTraced'] += 1
+            
+            
+            # event.TO Updates are common for all models and all parameter settings
             
             if e.to == 'I':
                 m['nI'] += 1
@@ -317,11 +355,6 @@ class EngineDual(Engine):
                 if self.no_exposed: m['totalInfected'] = m['totalInfectious']
             elif e.to == 'R':
                 m['totalRecovered'] += 1
-            elif e.to == 'T':
-                m['totalTraced'] += 1
-                # if S -> T then a person has been incorrectly traced
-                if e.fr == 'S': m['totalFalseTraced'] += 1
-                if e.fr == 'E': m['totalExposedTraced'] += 1
             elif e.to == 'E':
                 m['nE'] += 1
                 m['totalInfected'] += 1
@@ -330,30 +363,15 @@ class EngineDual(Engine):
                 m['totalHospital'] += 1
             elif e.to == 'D':
                 m['totalDeath'] += 1
-                
-            # if this changes to False, simulation is continued
-            stop_simulation = True
-                
-            # local vars for efficiency
-            node_states = know_net.node_states
-            node_traced = know_net.node_traced
-            node_counts = know_net.node_counts
-
-            # compute random tracing effort -> we only care about the number of traceable_states ('S', 'E', 'I', 'Ia', 'Is')
-            randEffortAcum = 0
-            # compute active tracing effort -> we only care about the neighs of nodes in traceable_states ('S', 'E', 'I', 'Ia', 'Is')
-            tracingEffortAccum = 0
-            for nid in node_list:
-                current_state = node_states[nid]
-                if not node_traced[nid] and current_state in ['S', 'E', 'I', 'Ia', 'Is']:
-                    randEffortAcum += 1
-                    tracingEffortAccum += node_counts[nid]['T']
-                # if one state is not a final configuration state, continue simulation
-                if current_state not in ['S', 'R', 'D']:
-                    stop_simulation = False
                     
-            m['tracingEffortRandom'] = args.taur * randEffortAcum
-            m['tracingEffortContact'] = self.tr_rate * tracingEffortAccum
+            # list of efforts and final state check for each tracing network
+            efforts_and_check_end = np.atleast_2d(know_net.compute_efforts_and_check_end_config())
+            # random (testing) effort will be the same for all dual networks - element 0 in each result list      
+            m['tracingEffortRandom'] = round(args.taur * efforts_and_check_end[0, 0], 2)
+            # the contact tracing effort is DIFFERENT across the dual networks - element 1 in each result list
+            m['tracingEffortContact'] = self.tr_rate * efforts_and_check_end[:, 1]
+            # the flag to check for sim finish is also the same for all networks - last element in each result list
+            stop_simulation = efforts_and_check_end[0, -1]
             
             # False Positives: Infectious but not Traced
             # infectious - traced_infectious = infectious - (traced - traced_false - traced_exposed)
@@ -366,30 +384,26 @@ class EngineDual(Engine):
             # draw network at each inner state if option selected
 #             if args.draw_iter:
 #                 print('State after events iteration ' + str(i) + ':')
-#                 plt.figure(figsize=(14, 5))
-#                 plt.subplot(121)
-#                 plt.title('True Network')
-#                 self.true_net.draw(show=False)
-#                 plt.subplot(122)
-#                 plt.title('Tracing Network')
-#                 self.know_net.draw(self.true_net.pos, show=False)
+#                 fix, ax = plt.subplots(nrows=1, ncols=int(args.dual) + 1, figsize=(16, 5))
+#                 ax[0].set_title('True Network')
+#                 self.true_net.draw(show=False, ax=ax[0])
+#                 ax[1].set_title('Tracing Networks')
+#                 self.know_net.draw(pos=self.true_net.pos, show=False, ax=ax[1:])
 #                 plt.show()
 #                 sleep(1.5)
 
-            # close simulation if the only possible events remain T -> N -> T
+            # close simulation if the only possible events remain T -> N -> T etc
             if stop_simulation:
                 break
 
         if args.draw:
             print('Final state:')
-            plt.figure(figsize=(14, 5))
-            plt.subplot(121)
-            plt.title('True Network')
-            self.true_net.draw(show=False)
-            plt.subplot(122)
-            plt.title('Tracing Network')
-            self.know_net.draw(self.true_net.pos, show=False)
-            plt.show()                
+            fix, ax = plt.subplots(nrows=1, ncols=int(args.dual) + 1, figsize=(16, 5))
+            ax[0].set_title('True Network')
+            self.true_net.draw(show=False, ax=ax[0])
+            ax[1].set_title('Tracing Networks')
+            self.know_net.draw(pos=self.true_net.pos, show=False, ax=ax[1:])
+            plt.show()               
 
         return result
 
@@ -398,11 +412,29 @@ class EngineOne(Engine):
     
     def __call__(self, itr):
         
+        # local vars for efficiency
+        args = self.args
+        true_net = self.true_net
+        trans = self.trans_true
+        
         if self.args.draw:
-            self.true_net.draw()
-      
-        # simulation objects
-        sim_true = Simulation(self.true_net, self.trans_true)
+            true_net.draw(seed=args.seed)
+            
+        
+        # in the case of separate_traced, mimic dual simulation objects as if dual net was run (sim_true + sim_know)
+        if args.separate_traced:
+            # infection simulator in this case should not be able to run 'T' events
+            transition_items = defaultdict(list)
+            for state in trans:
+                for transition, func in trans[state]:
+                    if transition != 'T':
+                        transition_items[state].append((transition, func))
+            sim_true = true_net.get_simulator(transition_items)
+            # the tracing simulator will callibrate on the first call to only accept 'T' events
+            sim_know = true_net.get_simulator(trans)
+        else:
+            # base simulation object with all transitions possible
+            sim_true = true_net.get_simulator(trans)
         
         # number of initial infected
         inf = self.args.first_inf
@@ -414,8 +446,11 @@ class EngineOne(Engine):
             'nH' : 0,
             'totalInfected' : inf,
             'totalInfectious': inf,
+            'totalFalsePositive': 0,
             'totalTraced' : 0,
             'totalFalseTraced': 0,
+            'totalExposedTraced': 0,
+            'totalNonCompliant': 0,
             'totalRecovered' : 0,
             'totalHospital' : 0,
             'totalDeath' : 0,
@@ -433,23 +468,42 @@ class EngineOne(Engine):
 
             e1 = sim_true.get_next_event()
             
-            ### NOTE: Running separate_traced sims on a Single network is actually SLOWER than running on Dual directly
+            ### NOTE: Running separate_traced sims on a Single network is actually SLOWER than running on Dual net directly
             if self.args.separate_traced:
                 # allow for separate tracing events to also be considered in the current events loop
-                e2 = sim_true.get_next_trace_event()
+                e2 = sim_know.get_next_trace_event()
 
                 # If no more events left, break out of the loop
                 if e1 is None and e2 is None:
                     break
 
                 e = e1 if (e2 is None or (e1 is not None and e1.time < e2.time)) else e2
+                
+                # update the time for the 'fake' sim_know object
+                sim_know.time = e.time
 
                 # if the event chosen is a tracing event, separate logic follows (NOT updating event.FROM counts!)
                 if e.to == 'T':
-                    sim_true.run_trace_event(e)
-                # otherwise, normal logic follows (with update counts)
+                    # the update to total traced counts is done only once (ignore if same nid is traced again)
+                    if e.node not in true_net.traced_time:
+                        m['totalTraced'] += 1
+                        # if S -> T then a person has been incorrectly traced
+                        if e.fr == 'S': m['totalFalseTraced'] += 1
+                        if e.fr == 'E': m['totalExposedTraced'] += 1
+                    
+                    sim_true.run_trace_event(e, True)
+                    
+                # Non-compliance with isolation event
+                elif e.fr == 'T':
+                    # the update to total noncompliant counts is done only once (ignore if same nid is noncompliant again)
+                    if e.node not in true_net.noncomp_time:
+                        m['totalNonCompliant'] += 1
+                        
+                    sim_true.run_trace_event(e, False)
+                    
                 else:
                     sim_true.run_event(e)
+
                     # Update event.FROM counts:
                     #   - for models other than covid, leaving 'I' means a decrease in infectious count
                     #   - for covid, leaving 'Ia' or 'Is' means current infectious count decreases
@@ -478,6 +532,13 @@ class EngineOne(Engine):
                 elif e.fr == 'H':
                     m['nH'] -= 1
                     
+                # Update 'T' fr counts
+                if e.to == 'T':
+                    m['totalTraced'] += 1
+                    # if S -> T then a person has been incorrectly traced
+                    if e.fr == 'S': m['totalFalseTraced'] += 1
+                    if e.fr == 'E': m['totalExposedTraced'] += 1
+                    
             
             # event.TO Updates are common for all models
                                 
@@ -488,10 +549,6 @@ class EngineOne(Engine):
                 if self.no_exposed: m['totalInfected'] = m['totalInfectious']
             elif e.to == 'R':
                 m['totalRecovered'] += 1
-            elif e.to == 'T':
-                m['totalTraced'] += 1
-                # if S -> T then a person has been incorrectly traced
-                if e.fr == 'S': m['totalFalseTraced'] += 1
             elif e.to == 'E':
                 m['nE'] += 1
                 m['totalInfected'] += 1
@@ -501,24 +558,35 @@ class EngineOne(Engine):
             elif e.to == 'D':
                 m['totalDeath'] += 1
 
-            # compute random tracing effort -> net_size - non_traceable_states = traceable_states ('S', 'E', 'I', 'Ia', 'Is')
-            m['tracingEffortRandom'] = self.args.taur * (self.args.netsize - \
-                m['totalTraced'] - m['totalHospital'] - m['totalRecovered'] - m['totalDeath'])
-            # compute active tracing effort -> we only care about traceable_states ('S', 'E', 'I', 'Ia', 'Is')
-            tracingEffortAccum = 0
-            for nid in self.know_net.node_list:
-                current_state = self.know_net.node_states[nid]
-                if current_state in ['S', 'E', 'I', 'Ia', 'Is']:
-                    tracingEffortAccum += self.true_net.node_counts[nid]['T']
-            m['tracingEffortContact'] = self.tr_rate * tracingEffortAccum
+                
+            # list of efforts and final state check for each tracing network (in this case only one)
+            efforts_and_check_end = true_net.compute_efforts_and_check_end_config()
+            # random (testing) effort will be the same for all dual networks - element 0 in the result list      
+            m['tracingEffortRandom'] = round(args.taur * efforts_and_check_end[0], 2)
+            # the contact tracing effort is DIFFERENT across the dual networks - element 1 in the result list
+            m['tracingEffortContact'] = round(self.tr_rate * efforts_and_check_end[1], 2)
+            # the flag to check for sim finish is also the same for all networks - last element in the result list
+            stop_simulation = efforts_and_check_end[-1]
+            
+            # False Positives: Infectious but not Traced
+            # infectious - traced_infectious = infectious - (traced - traced_false - traced_exposed)
+            m['totalFalsePositive'] = m['totalInfectious'] - (m['totalTraced'] - m['totalFalseTraced'] - m['totalExposedTraced'])
 
             # record metrics after event run for time e.time
             m['time'] = e.time
             result.append(StatsEvent(**m))
             
+            if e.time < 0:
+                print("Error for " + str(e.node) + " " + e.fr + " " + e.to)
+                stop_simulation = True
+            
 #             if self.args.draw_iter:
 #                 print('State after events iteration ' + str(i) + ':')
-#                 self.true_net.draw()
+#                 self.true_net.draw(seed=args.seed)
+
+            # close simulation if the only possible events remain T -> N -> T etc
+            if stop_simulation:
+                break
             
         if self.args.draw:
             print('Final state:')

@@ -1,0 +1,32 @@
+- Ignore overlap
+- 1 experiment with no contact
+- uptake 50%
+- .1, .1
+- .2
+- k 10
+- netsize 500, 1000, 2000, 5000, 10000, 50k
+
+
+
+- nnet = different initializations (edges removed)  -> serial 50x - 10
+- niters = 1 net initialization, niters with that    -> multiprocessed - 30
+
+
+
+
+- Ignore overlap
+- 1 experiment with no contact tracing
+- Removing nodes - uptake (10-100%)
+- tau_vals = np.array([0, .03, .05, .1, .2, .5]) -> random tracing, contact tracing rates
+- pa .2 .5
+
+- k = 10, 20 average-degree
+- netsize 1000, 10000
+
+- 100-150 experiments
+
+- relative-infectiousness 0.5 ?! KEEP
+- relative-random-tracing .8 ?! -> Is / Ia
+
+- noncompliance rate -> .002 ?! * time_since_tracing
+- second network?! (manual tracing)

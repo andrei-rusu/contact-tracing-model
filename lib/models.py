@@ -46,8 +46,9 @@ def seir(trans_true, trans_know, args):
     
 def covid(trans_true, trans_know, args):
     # Infections spread based on true_net connections depending on nid
-    add_trans(trans_true, 'S', 'E', lambda net, nid:  \
-              expFactorTimesCountMultiState(net, nid, states=['Is'], lamda=args.beta, base=0, rel_states=['I', 'Ia'], rel=args.rel_beta))
+    add_trans(trans_true, 'S', 'E', lambda net, nid, debug=False:  \
+              expFactorTimesCountMultiState(net, nid, states=['Is'], lamda=args.beta, base=0, debug=debug, 
+                                            rel_states=['I', 'Ia'], rel=args.rel_beta))
     
     # Transition to presymp with latency epsilon (we denote I = Ip !!!)
     add_trans(trans_true, 'E', 'I', lambda net, nid: -(math.log(random.random()) / args.eps))

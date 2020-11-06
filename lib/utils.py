@@ -82,7 +82,7 @@ def expFactorTimesCount(net, nid, state='I', lamda=1, base=0):
         return -(math.log(random.random()) / exp_param)
     return float('inf')
 
-def expFactorTimesCountMultiState(net, nid, states=['I'], lamda=1, base=0, rel_states=[], rel=1):
+def expFactorTimesCountMultiState(net, nid, states=['I'], lamda=1, base=0, rel_states=[], rel=1, debug=False):
     """
     lamda : multiplicative factor of exponential
     rel : relative importance
@@ -95,8 +95,8 @@ def expFactorTimesCountMultiState(net, nid, states=['I'], lamda=1, base=0, rel_s
         exp_param_states += counts[state]
     for state in rel_states:
         exp_param_rel_states += counts[state]
-        
     exp_param = base + lamda * (exp_param_states + rel * exp_param_rel_states)
+    
     if exp_param:
         return -(math.log(random.random()) / exp_param)
     return float('inf')
@@ -115,7 +115,7 @@ def get_boxplot_statistics(data, axis=0):
         stds = np.std(for_data, axis=0, ddof=1) if shape_dat[0] > 1 else [0] * shape_dat[1]
     # boxplot computes mean, quartiles and whiskers
     B = plt.boxplot(for_data, showmeans=True)
-    plt.clf()
+    plt.close()
     # Record means and medians for each axis
     means = B['means']
     meds = B['medians']
@@ -135,6 +135,7 @@ def get_boxplot_statistics(data, axis=0):
         dct['whishi'] = whisk2[1]
         results.append(dct)
     return results
+
 
 ### Useful classes ###
 
@@ -182,9 +183,35 @@ class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.ndarray):
             return obj.tolist()
-        return json.JSONEncoder.default(self, obj) 
-        
-      
+        return json.JSONEncoder.default(self, obj)
+    
+
+# List subclass which propagates method calls to the elements in the list
+class ListDelegator(list):
+    
+    def __init__(self, *args, args_list=()):
+        all_args = args + tuple(args_list)
+        list.__init__(self, all_args)        
+
+    def __getattr__(self, method_name):
+        if self and hasattr(self[0], method_name):
+            def delegator(self, *args, **kw):
+                results = ListDelegator()
+                for element in self:
+                    results.append(getattr(element, method_name)(*args, **kw))
+                # return the list of results only if there's any not-None value (equivalent to ignoring void returns)
+                return results if results != [None] * len(results) else None
+            # add the method to the class s.t. it can be called quicker the second time
+            setattr(ListDelegator, method_name, delegator)
+            # returning the attribute rather than the delegator func directly due to "self" inconsistencies
+            return getattr(self, method_name)
+        else:
+            error = "Could not find '" +  method_name + "' in the attributes list of this ListDelegator's elements"
+            raise AttributeError(error)
+            
+    def draw(self, *args, ax=[None, None], **kw):
+        self[0].draw(*args, ax=ax[0], **kw)
+        self[1].draw(*args, ax=ax[1], **kw)
     
 ### Hack for TQDM to allow print together with the progress line in the same STDOUT
 
@@ -208,12 +235,26 @@ def tqdm_redirect(*args, **kwargs):
         for x in tqdm.tqdm(*args, file=stdout, **kwargs):
             yield x
             
+
+# Debugging methods
             
 # reloads all modules specified
 def rel(*modules):
     for module in modules:
         importlib.reload(module)
-
+        
+# prints all variables specified and their value in the current frame
+def pvar(*var):
+    for i, x in enumerate(var):
+        if x == '\n':
+            print()
+        else:
+            frame = inspect.currentframe().f_back
+            s = inspect.getframeinfo(frame).code_context[0]
+            r = re.search(r"\((.*)\)", s).group(1)
+            fi = r.split(', ')
+            print("{} = {}, ".format(fi[i],x), end="", flush=True)
+    print('\n')
             
             
 # Pickle and JSON dump to file and retrieve functions
