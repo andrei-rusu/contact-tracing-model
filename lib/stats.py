@@ -96,7 +96,7 @@ class StatsProcessor():
                     accumulator[2][j][ser_index] = ser[last_idx].totalTraced
                     accumulator[3][j][ser_index] = ser[last_idx].totalRecovered
                     accumulator[4][j][ser_index] = ser[last_idx].tracingEffortRandom
-                    accumulator[5][j][ser_index] = ser[last_idx].tracingEffortContact
+                    accumulator[5][j][ser_index] = ser[last_idx].tracingEffortContact[0]
                     accumulator[6][j][ser_index] = ser[last_idx].nH
                     accumulator[7][j][ser_index] = ser[last_idx].totalHospital
                     accumulator[8][j][ser_index] = ser[last_idx].totalDeath

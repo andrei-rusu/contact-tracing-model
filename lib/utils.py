@@ -7,6 +7,7 @@ import pickle
 import json
 import glob
 import importlib
+import joblib
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -66,23 +67,34 @@ def exp(lamda=1):
         return -(math.log(random.random()) / lamda)
     return float('inf')
 
-def expFactorTimesTimeDif(net, nid, lamda=1, current_time=None):
-    if current_time is not None:
-        lamda *= current_time - net.traced_time[nid]
+def expFactorTimesTimeDif(net, nid, current_time=100, lamda=1):
+    """
+    Sample from an Exponential with tracing time difference
+    """
+    lamda *= current_time - net.traced_time[nid]
     if lamda:
         return -(math.log(random.random()) / lamda)
     return float('inf')    
     
-def expFactorTimesCount(net, nid, state='I', lamda=1, base=0):
+def expFactorTimesCount(net, nid, state='I', lamda=1):
     """
     Sample from an Exponential with Neighbour counts
     """
-    exp_param = base + lamda * net.node_counts[nid][state]
-    if exp_param:
-        return -(math.log(random.random()) / exp_param)
+    lamda *= net.node_counts[nid][state]
+    if lamda:
+        return -(math.log(random.random()) / lamda)
     return float('inf')
 
-def expFactorTimesCountMultiState(net, nid, states=['I'], lamda=1, base=0, rel_states=[], rel=1, debug=False):
+def expFactorTimesCountImportance(net, nid, state='T', base=0):
+    """
+    Sample from an Exponential with Neighbour counts weighted by network count_importance
+    """
+    lamda = base + net.count_importance * net.node_counts[nid][state]
+    if lamda:
+        return -(math.log(random.random()) / lamda)
+    return float('inf')    
+
+def expFactorTimesCountMultiState(net, nid, states=['I'], lamda=1, rel_states=[], rel=1, debug=False):
     """
     lamda : multiplicative factor of exponential
     rel : relative importance
@@ -95,10 +107,10 @@ def expFactorTimesCountMultiState(net, nid, states=['I'], lamda=1, base=0, rel_s
         exp_param_states += counts[state]
     for state in rel_states:
         exp_param_rel_states += counts[state]
-    exp_param = base + lamda * (exp_param_states + rel * exp_param_rel_states)
+    lamda *= exp_param_states + rel * exp_param_rel_states
     
-    if exp_param:
-        return -(math.log(random.random()) / exp_param)
+    if lamda:
+        return -(math.log(random.random()) / lamda)
     return float('inf')
 
 def get_boxplot_statistics(data, axis=0):
@@ -215,12 +227,14 @@ class ListDelegator(list):
     
 ### Hack for TQDM to allow print together with the progress line in the same STDOUT
 
-def tqdm_print(*args, **kwargs):
-    for arg in args:
-        tqdm.tqdm.write(str(arg), **kwargs)
-
 @contextmanager
 def redirect_to_tqdm():
+    """Context manager to allow tqdm.write to replace the print function"""
+    
+    def tqdm_print(*args, **kwargs):
+        for arg in args:
+            tqdm.tqdm.write(str(arg), **kwargs)
+            
     # Store builtin print
     old_print = print
     try:
@@ -234,6 +248,31 @@ def tqdm_redirect(*args, **kwargs):
     with redirect_to_tqdm():
         for x in tqdm.tqdm(*args, file=stdout, **kwargs):
             yield x
+            
+@contextmanager
+def tqdm_joblib(tqdm_object):
+    """Context manager to patch joblib to report into tqdm progress bar given as argument"""
+    
+    class TqdmBatchCompletionCallback(joblib.parallel.BatchCompletionCallBack):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+        def __call__(self, *args, **kwargs):
+            tqdm_object.update(n=self.batch_size)
+            return super().__call__(*args, **kwargs)
+        
+    # Store builtin completion callback
+    old_batch_callback = joblib.parallel.BatchCompletionCallBack
+    
+    try:
+        # Globaly replace the completion callback
+        joblib.parallel.BatchCompletionCallBack = TqdmBatchCompletionCallback
+        yield tqdm_object
+    finally:
+        # restore completion callback
+        joblib.parallel.BatchCompletionCallBack = old_batch_callback
+        # close tqdm_object
+        tqdm_object.close()
             
 
 # Debugging methods
@@ -297,7 +336,6 @@ def process_json_results(path=None, print_id_fail=True):
         try:
             json_file = get_json(file)
             # the json files has keys: 'args' and the single 'taut' value chosen
-            # this is NOT compatible with the 'tautrange': True
             args = json_file['args']
             taut = args['taut']
             taur = args['taur']

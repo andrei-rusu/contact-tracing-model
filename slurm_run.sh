@@ -36,7 +36,7 @@ python run.py \
     --dual 1 \
     --overlap 1 \
     --uptake .5 \
-    --maintain-overlap True \
+    --maintain_overlap False \
     --nnets 3 \
     --niters 3 \
     --separate_traced True \

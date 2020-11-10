@@ -2,15 +2,20 @@ import argparse
 import random
 import numpy as np
 import matplotlib.pyplot as plt
+import multiprocessing
 
 from tqdm import tqdm
 from time import sleep
 from itertools import count
 from collections import defaultdict
-from pathos.multiprocessing import ProcessingPool as Pool
+from pathos.pools import ProcessPool as Pool
+from joblib import Parallel, delayed
+from sys import stdout
 
 from lib import network
-from lib.utils import tqdm_redirect, expFactorTimesCount, expFactorTimesTimeDif, ListDelegator
+from lib.utils import tqdm_redirect, tqdm_joblib, ListDelegator, \
+    expFactorTimesCount, expFactorTimesTimeDif, expFactorTimesCountImportance
+    
 from lib.simulation import Simulation
 from lib.stats import StatsProcessor, StatsEvent
 from lib.models import get_transitions_for_model, add_trans
@@ -24,14 +29,16 @@ PARAMETER_DEFAULTS = {
     'spontan': False, # allow spontaneus recovery (for SIR and SEIR only, Covid uses this by default)
     'gammatau': None, # recovery rate for traced people (if None, global gamma is used)
     'taur': 0.1, 'taut': 0.1, # random tracing (testing) + contract-tracing rate which will be multiplied with no of traced contacts
-    'noncomp': .002,
+    'taut_two': 0.1, # contract-tracing rate for the second tracing network (if exists)
+    'noncomp': .002, # noncompliance rate
+    'noncomp_time': True, # whether the noncomp rate will be multiplied by time diference between tracing and current time
     'netsize': 1000, 'k': 10, # net size and avg degree
     'overlap': .8, 'overlap_two': .4, # overlaps for dual nets (second is used only if dual == 2)
     'zadd': 0, 'zrem': 5, # if no overlap given, these values are used for z_add and z_rem; z_add also informs overlap of additions
     'zadd_two': 0, 'zrem_two': 5, # these are used only if dual == 2 and no overlap_manual is given
-    'uptake': 1, 'maintain_overlap': True, 
+    'uptake': 1., 'maintain_overlap': True, 
     'nnets': 1, 'niters': 1, 'nevents': 0, # running number of nets, iterations per net and events (if 0, until no more events)
-    'multip': False, # whether multiprocessing is used
+    'multip': 1, # 0 - no multiprocess, 1 - multiprocess nets, 2 - multiprocess iters, 3 - multiprocess nets and iters (half-half cpus)
     'draw': False, 'draw_iter': False, 'dual': 1, 'seed': None,
     # None -> full_summary never called; False -> no summary printing, True -> print summary as well
     'summary_print': None,
@@ -43,7 +50,8 @@ PARAMETER_DEFAULTS = {
     # COVID model specific parameters:
     'pa': 0.2, # probability of being asymptomatic (could also be 0.5)
     'rel_beta': .5, # relative infectiousness of Ip/Ia compared to Is (Imperial paper + Medrxiv paper)
-    'rel_taur': .8, # relative random tracing (testing) rate of Ia compared to Is 
+    'rel_taur': .8, # relative random tracing (testing) rate of Ia compared to Is
+    'rel_taut': 1., 
     'miup': 1/1.5, # duration of prodromal phase
     'ph': [0, 0.1, 0.2], # probability of being hospitalized (i.e. having severe symptoms Pss) based on age category 
     'lamdahr': [0, .083, .033], # If hospitalized, daily rate entering in R based on age category
@@ -67,6 +75,9 @@ def main(args):
     
     # Whether the model is Covid or not
     is_covid = (args.model == 'covid')
+    
+    # Turn off multiprocessing if only one net and one iteration selected
+    if args.nnets == 1 and args.niters == 1: args.multip = False
  
     # Set recovery rate for traced people based on whether gammatau was provided
     if args.gammatau is None: args.gammatau = args.gamma
@@ -81,17 +92,25 @@ def main(args):
     # if no noncompliace rate is chosen, skip this transition
     # Note: optional argument time can be passed to make the noncompliance rate time dependent
     if args.noncomp:
-        add_trans(trans_know_items, 'T', 'N', lambda net, nid, time=None: expFactorTimesTimeDif(net, nid, args.noncomp, time))
+        if args.noncomp_time:
+            noncomp_func = lambda net, nid, time: expFactorTimesTimeDif(net, nid, current_time=time, lamda=args.noncomp)
+        else:
+            noncomp_func = lambda net, nid, time=None: -(math.log(random.random()) / args.noncomp)
+        add_trans(trans_know_items, 'T', 'N', noncomp_func)
     
     # we can simulate with a range of tracing rates or with a single one provied by args.taut
     tracing_rates = np.atleast_1d(args.taut)
     
+    # populate these variables only if returns_last_net = True
+    true_net = know_net = None
+    
     for tr_rate in tracing_rates:
+        # tr_rate will be used as the tracing_net.count_importance
         
-        print('For taut =', tr_rate, ', and taur =', args.taur)
+        print('===== For taut =', tr_rate, '& taur =', args.taur, "=====")
 
         # Tracing for 'S', 'E' happens over know_net depending only on the traced neighbor count of nid (no testing possible)
-        tr_func = (lambda net, nid: expFactorTimesCount(net, nid, state='T', lamda=tr_rate, base=0)) if tr_rate else None
+        tr_func = (lambda net, nid: expFactorTimesCountImportance(net, nid, state='T', base=0)) if tr_rate else None
         add_trans(trans_know_items, 'S', 'T', tr_func)
         add_trans(trans_know_items, 'E', 'T', tr_func)
         
@@ -101,10 +120,10 @@ def main(args):
         if tr_rate or args.taur:
             # Tracing for I states which can be found via testing also depend on a random testing rate: args.taur
             tr_and_test_func = \
-                lambda net, nid: expFactorTimesCount(net, nid, state='T', lamda=tr_rate, base=args.taur)
+                lambda net, nid: expFactorTimesCountImportance(net, nid, state='T', base=args.taur)
             # For certain states, random tracing is done at a smaller rate (Ia vs Is)
             tr_and_test_rel_func = \
-                lambda net, nid: expFactorTimesCount(net, nid, state='T', lamda=tr_rate, base=args.taur * args.rel_taur)
+                lambda net, nid: expFactorTimesCountImportance(net, nid, state='T', base=args.taur * args.rel_taur)
         
         # Update transition parameters based on the abvoe defined tracing functions
         if is_covid:
@@ -117,69 +136,38 @@ def main(args):
         else:
             # in non-COVID models we assume all 'I' states can be spotted via testing
             add_trans(trans_know_items, 'I', 'T', tr_and_test_func)
-                
-                
-        for inet in range(args.nnets):
-            print('Simulating network - No.', inet)
-            
-            # Get true_net with all nodes in state 'S' but one which is 'I'
-            true_net = network.get_random(args.netsize, args.k, args.rem_orphans)
-            true_net.change_state(first_inf, state='I', update=True)
-            
-            # Placeholder for the dual network (will be initialized only if args.dual)
-            know_net = None
-                        
-            if args.dual:
-                # First dual net depends on both overlap and uptake (this is usually the digital contact tracing net)
-                know_net = network.get_dual(true_net, args.overlap, args.zadd, args.zrem, args.uptake, args.maintain_overlap)
-                
-                # if 2 dual networks selected, create the second network and add both to a ListDelegator
-                if args.dual == 2:
-                    # Second net depends only on overlap_two - i.e. uptake = 1 (this is usually the manual tracing net)
-                    know_net_two = network.get_dual(true_net, args.overlap_two, args.zadd_two, args.zrem_two, 
-                                                  keep_nodes_percent=1, maintain_overlap=True)
-                    
-                    # know_net becomes a ListDelegator of the 2 networks
-                    know_net = ListDelegator(know_net, know_net_two)
-                    
-                
-                # Object used during Multiprocessing of Network simulation events
-                engine = EngineDual(
-                    args=args, no_exposed=no_exposed, is_covid=is_covid,
-                    true_net=true_net, know_net=know_net, tr_rate=tr_rate,
-                    trans_true=trans_true_items, trans_know=trans_know_items
-                )
-                
-            else:
-                # Object used during Multiprocessing of Network simulation events
-                engine = EngineOne(
-                    args=args, no_exposed=no_exposed, is_covid=is_covid,
-                    true_net=true_net, tr_rate=tr_rate,
-                    trans_true=trans_true_items,
-                )
+        
+        
+        nnets = args.nnets
+        net_range = range(nnets)
+        # Multiprocessing object to use for each network initialization
+        engine = EngineNet(args=args, first_inf=first_inf, no_exposed=no_exposed, is_covid=is_covid,
+                          tr_rate=tr_rate, trans_true_items=trans_true_items, trans_know_items=trans_know_items)
 
-            iters_range = range(args.niters)
-
-            if args.multip:
-                with Pool() as pool:
-                    for itr, stats_events in enumerate(tqdm_redirect(pool.imap(engine, iters_range), total=args.niters)):
-                        # Record sim results
-                        stats.sim_summary[inet][itr] = stats_events
-            else:
-                for itr in tqdm_redirect(iters_range):
-                    print('Running iteration ' + str(itr) + ':')
-                    
-                    # Reinitialize network + Random first infected at the beginning of each run BUT the first one
-                    # This is needed only in sequential processing since in multiprocessing the nets are deepcopied anyway
-                    if itr:
-                        engine.reinit_net(first_inf)
-                    
-                    # Run simulation
-                    stats_events = engine(itr)
-                    
+        if args.multip == 1:
+            with Pool() as pool:
+                for inet, net_events in enumerate(tqdm_redirect(pool.imap(engine, net_range), total=args.nnets, 
+                                                                desc='Networks simulation progress')):
                     # Record sim results
-                    stats.sim_summary[inet][itr] = stats_events
-                    print('---> Result:' + str(stats_events[-1]['totalInfected']) + ' total infected persons over time.')
+                    stats.sim_summary[inet] = net_events
+                    
+        elif args.multip == 3:
+            # allocate half cpus to joblib for parallelizing simulations for different network initializations
+            jobs = int(multiprocessing.cpu_count() / 2)
+            with tqdm_joblib(tqdm(desc='Networks simulation progress', file=stdout, total=nnets)), Parallel(n_jobs=jobs) as parallel:
+                all_events = parallel(delayed(engine)(inet) for inet in net_range)
+            stats.sim_summary.update(enumerate(all_events))
+            
+        else:
+            for inet in net_range:
+                print('----- Simulating network no.', inet, '-----')
+
+                # Run simulation
+                net_events, true_net, know_net = engine(inet, return_last_net=True)
+
+                # Record sim results
+                stats.sim_summary[inet] = net_events
+
                     
         stats.results_for_param(tr_rate)
         
@@ -200,9 +188,100 @@ class Engine():
         self.true_net.change_state(first_inf, state='I', update=True)
         
     def __call__(self, itr):
-        raise NotImplemented
+        raise NotImplementedError
+        
+        
+class EngineNet(Engine):
+    """
+    This class will be used for multiprocessing over different network initialization
+    """
     
+    def __call__(self, inet, return_last_net=False):
+        # local vars for efficiency
+        args = self.args
+        first_inf = self.first_inf
+        no_exposed = self.no_exposed
+        is_covid = self.is_covid
+        tr_rate = self.tr_rate
+        trans_true_items = self.trans_true_items
+        trans_know_items = self.trans_know_items
+        
+        # will hold all network events
+        net_events = defaultdict()
+        
+        # Get true_net with all nodes in state 'S' but one which is 'I'
+        true_net = network.get_random(args.netsize, args.k, args.rem_orphans)
+        true_net.change_state(first_inf, state='I', update=True)
 
+        # Placeholder for the dual network (will be initialized only if args.dual)
+        know_net = None
+
+        if args.dual:
+            # First dual net depends on both overlap and uptake (this is usually the digital contact tracing net)
+            know_net = network.get_dual(true_net, args.overlap, args.zadd, args.zrem, 
+                            keep_nodes_percent=args.uptake, maintain_overlap=args.maintain_overlap, count_importance=tr_rate)
+
+            # if 2 dual networks selected, create the second network and add both to a ListDelegator
+            if args.dual == 2:
+                # Second net depends only on overlap_two - i.e. uptake = 1 (this is usually the manual tracing net)
+                know_net_two = network.get_dual(true_net, args.overlap_two, args.zadd_two, args.zrem_two, 
+                            keep_nodes_percent=1, maintain_overlap=True, count_importance=args.taut_two)
+
+                # know_net becomes a ListDelegator of the 2 networks
+                know_net = ListDelegator(know_net, know_net_two)
+
+
+            # Object used during Multiprocessing of Network simulation events
+            engine = EngineDual(
+                args=args, no_exposed=no_exposed, is_covid=is_covid,
+                true_net=true_net, know_net=know_net, tr_rate=tr_rate,
+                trans_true=trans_true_items, trans_know=trans_know_items
+            )
+
+        else:
+            # Object used during Multiprocessing of Network simulation events
+            engine = EngineOne(
+                args=args, no_exposed=no_exposed, is_covid=is_covid,
+                true_net=true_net, tr_rate=tr_rate,
+                trans_true=trans_true_items,
+            )
+
+
+        niters = args.niters
+        iters_range = range(niters)
+
+        if args.multip == 2 or args.multip == 3:
+            # allocate EITHER half or all cpus to pathos.multiprocess for parallelizing simulations for different iterations of 1 init
+            # multip == 2 parallelize only iterations; multip == 3 parallelize both net and iters
+            jobs = int(multiprocessing.cpu_count() / (args.multip - 1))
+            with Pool(ncpus=jobs) as pool:
+                for itr, stats_events in enumerate(tqdm_redirect(pool.imap(engine, iters_range), total=niters,
+                                                                desc='Iterations simulation progress')):
+                    # Record sim results
+                    net_events[itr] = stats_events
+            
+        else:
+            for itr in tqdm_redirect(iters_range, desc='Iterations simulation progress'):
+                print('Running iteration ' + str(itr) + ':')
+                
+                # Reinitialize network + Random first infected at the beginning of each run BUT the first one
+                # This is needed only in sequential processing since in multiprocessing the nets are deepcopied anyway
+                if itr:
+                    engine.reinit_net(first_inf)
+
+                # Run simulation
+                stats_events = engine(itr)
+
+                # Record sim results
+                net_events[itr] = stats_events
+                print('---> Result:' + str(stats_events[-1]['totalInfected']) + ' total infected persons over time.')
+                
+        if return_last_net:
+            return net_events, true_net, know_net
+        
+        return net_events
+
+    
 class EngineDual(Engine):
     
     def reinit_net(self, first_inf):    

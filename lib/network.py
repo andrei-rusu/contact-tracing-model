@@ -46,6 +46,8 @@ class Network(nx.Graph):
         self.node_counts = defaultdict(dict)
         self.traced_time = {}
         self.noncomp_time = {}
+        # relative counts importance (will be multiplied with the counts to obtain their importance in the rate)
+        self.count_importance = 1
         
         super().__init__(**kwds)
         
@@ -342,6 +344,7 @@ def get_random(n=200, k=10, rem_orphans=False, weighted=False):
     G = Network()
     return G.init_random(n, k, rem_orphans, weighted)
        
-def get_dual(G, overlap=None, z_add=0, z_rem=5, keep_nodes_percent=1, maintain_overlap=True):
+def get_dual(G, overlap=None, z_add=0, z_rem=5, keep_nodes_percent=1, maintain_overlap=True, count_importance=1):
     N = deepcopy(G)
+    N.count_importance = count_importance
     return N.noising_links(overlap, z_add, z_rem, keep_nodes_percent, maintain_overlap, update=True)
