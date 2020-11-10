@@ -50,8 +50,7 @@ PARAMETER_DEFAULTS = {
     # COVID model specific parameters:
     'pa': 0.2, # probability of being asymptomatic (could also be 0.5)
     'rel_beta': .5, # relative infectiousness of Ip/Ia compared to Is (Imperial paper + Medrxiv paper)
-    'rel_taur': .8, # relative random tracing (testing) rate of Ia compared to Is
-    'rel_taut': 1., 
+    'rel_taur': .8, # relative random tracing (testing) rate of Ia compared to Is 
     'miup': 1/1.5, # duration of prodromal phase
     'ph': [0, 0.1, 0.2], # probability of being hospitalized (i.e. having severe symptoms Pss) based on age category 
     'lamdahr': [0, .083, .033], # If hospitalized, daily rate entering in R based on age category

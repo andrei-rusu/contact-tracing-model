@@ -20,7 +20,7 @@ def get_transitions_for_model(args):
 
     
 def sir(trans_true, trans_know, args):
-    add_trans(trans_true, 'S', 'I', lambda net, nid: expFactorTimesCount(net, nid, state='I', lamda=args.beta, base=0))
+    add_trans(trans_true, 'S', 'I', lambda net, nid: expFactorTimesCount(net, nid, state='I', lamda=args.beta))
     
     if args.spontan:
         # allow spontaneuous recovery (without tracing) with rate gamma
@@ -31,7 +31,7 @@ def sir(trans_true, trans_know, args):
     
 def seir(trans_true, trans_know, args):
     # Infections spread based on true_net connections depending on nid
-    add_trans(trans_true, 'S', 'E', lambda net, nid: expFactorTimesCount(net, nid, state='I', lamda=args.beta, base=0))
+    add_trans(trans_true, 'S', 'E', lambda net, nid: expFactorTimesCount(net, nid, state='I', lamda=args.beta))
 
     # Next transition is network independent (at rate eps) but we keep the same API for sampling at get_next_event time
     add_trans(trans_true, 'E', 'I', lambda net, nid: -(math.log(random.random()) / args.eps))
@@ -47,7 +47,7 @@ def seir(trans_true, trans_know, args):
 def covid(trans_true, trans_know, args):
     # Infections spread based on true_net connections depending on nid
     add_trans(trans_true, 'S', 'E', lambda net, nid, debug=False:  \
-              expFactorTimesCountMultiState(net, nid, states=['Is'], lamda=args.beta, base=0, debug=debug, 
+              expFactorTimesCountMultiState(net, nid, states=['Is'], lamda=args.beta, debug=debug, 
                                             rel_states=['I', 'Ia'], rel=args.rel_beta))
     
     # Transition to presymp with latency epsilon (we denote I = Ip !!!)
