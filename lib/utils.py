@@ -142,10 +142,10 @@ def get_boxplot_statistics(data, axis=0, avg_without_idx=None):
         data_without_idx = np.delete(for_data, avg_without_idx, axis=0)
         shape_dat_without = data_without_idx.shape
         if len(shape_dat_without) == 1:
-            means_without = [np.mean(data_without_idx)]
+            means_without = [np.mean(data_without_idx) if shape_dat_without[0] > 0 else 0]
             stds_without = [np.std(data_without_idx, ddof=1) if shape_dat_without[0] > 1 else 0]
         else:
-            means_without = np.mean(data_without_idx, axis=0)
+            means_without = np.mean(data_without_idx, axis=0) if shape_dat_without[0] > 0 else [0] * shape_dat_without[1]
             stds_without = np.std(data_without_idx, axis=0, ddof=1) if shape_dat_without[0] > 1 else [0] * shape_dat_without[1]
     
     # this list will hold the statistic dict results
