@@ -30,22 +30,24 @@ class StatsProcessor():
     def __getitem__(self, item):
          return self.param_res[item]
         
-    def full_summary(self, splits=1000, printit=False):
+    def full_summary(self, splits=1000, printit=0):
         """
         This produces a full summary of the epidemic simulations
         
         splits : number of time intervals
         printit : whether to print the summary to stdout
         """
+        # local for efficiency
+        args = self.args
         
         summary = defaultdict(dict)
-        summary['args'] = vars(self.args).copy()
-        summary['args']['r0'] = self.args.beta / self.args.gamma
+        summary['args'] = vars(args).copy()
+        summary['args']['r0'] = args.beta / args.gamma
         
-        if self.args.dual:
+        if args.dual:
             # If dual=True, true overlap is EITHER the inputted overlap OR (k-zrem)/(k-zadd)
             summary['args']['true-overlap'] = \
-                get_overlap_for_z(args.k, args.zadd, args.zrem) if self.args.overlap is None else self.args.overlap
+                get_overlap_for_z(args.k, args.zadd, args.zrem) if args.overlap is None else args.overlap
         else:
             # when single network run (i.e. dual=False), the true overlap is 1 since all the dual configs are ignored
             summary['args']['true-overlap'] = 1
@@ -77,10 +79,15 @@ class StatsProcessor():
             num_vars = 13
             # holds simulation result parameters over time
             accumulator = np.zeros((num_vars, splits, len_series))
+            # indexes of early stopped
+            idx_early_stopped = []
                                 
             for ser_index in range(len_series):
                 # current result in the series_to_sum array
                 ser = series_to_sum[ser_index]
+                # if the overall infected remained smaller than the no. of initial infected + selected margin, account as earlystop
+                if ser[-1].totalInfected <= args.first_inf + args.earlystop_margin:
+                    idx_early_stopped.append(ser_index)
                 # counter var which will be used to index the current result in the series at a specific time slot
                 serI = 1
                 for j in range(splits):
@@ -125,26 +132,32 @@ class StatsProcessor():
                         this_timeofmax = event.time
                 h_max.append(this_max)
                 h_timeofmax.append(this_timeofmax)
-            
-            
+                
+            # indexes to remove from the alternative mean_wo and std_wo calculation (only if option selected from args)
+            without_idx = idx_early_stopped if args.avg_without_earlystop else None
+                        
             ###############
             # compute averages and other statistics for the over-time simulation results
             stats_for_timed_parameters = []
             for i in range(num_vars):
-                stats_for_timed_parameters.append(get_boxplot_statistics(accumulator[i], axis=1))
+                stats_for_timed_parameters.append(get_boxplot_statistics(accumulator[i], axis=1, avg_without_idx=without_idx))
             stats_for_timed_parameters = np.array(stats_for_timed_parameters)
                 
             # compute averages and other statistics for the peak simulation results
-            stats_for_max_inf = get_boxplot_statistics(i_max)[0]
-            stats_for_timeofmax_inf = get_boxplot_statistics(i_timeofmax)[0]
-            stats_for_max_hos = get_boxplot_statistics(h_max)[0]
-            stats_for_timeofmax_hos = get_boxplot_statistics(h_timeofmax)[0]
+            stats_for_max_inf = get_boxplot_statistics(i_max, avg_without_idx=without_idx)[0]
+            stats_for_timeofmax_inf = get_boxplot_statistics(i_timeofmax, avg_without_idx=without_idx)[0]
+            stats_for_max_hos = get_boxplot_statistics(h_max, avg_without_idx=without_idx)[0]
+            stats_for_timeofmax_hos = get_boxplot_statistics(h_timeofmax, avg_without_idx=without_idx)[0]
             
             
             ##############
             # update averages dictionary for the current parameter value
-            current = summary[param]
+            # the key for results in the summary dictionary will be 'res' if the simulations ran for one parameter value only
+            # otherwise the key will be the actual parameter value
+            key_for_res = 'res' if len(self.param_res) == 1 else param
+            current = summary[key_for_res]
             current['time'] = time_range_limits
+            current['early-stopped'] = len(idx_early_stopped)
             
             current['average-infected'] = stats_for_timed_parameters[0]
             current['average-max-infected'] = stats_for_max_inf

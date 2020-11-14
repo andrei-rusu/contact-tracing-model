@@ -13,6 +13,7 @@ import matplotlib.patches as mpatches
 
 from lib.utils import rand_pairs, rand_pairs_excluding, get_z_for_overlap, get_overlap_for_z
 from lib.simulation import Simulation
+from lib.exp_sampler import ExpSampler
 
 STATES_COLOR_MAP = {
     'S': 'darkgreen',
@@ -51,7 +52,7 @@ class Network(nx.Graph):
         
         super().__init__(**kwds)
         
-    def init_random(self, n=200, k=10, rem_orphans=False, weighted=False):
+    def init_random(self, n=200, k=10, rem_orphans=False, presample_size=0, weighted=False):
         # Add nodes in state 'S'
         self.add_mult(n, 'S')
         # Add random links with degree k
@@ -65,6 +66,9 @@ class Network(nx.Graph):
         # Add the random edges with/without weights depending on 'weighted' parameter
         # This also updates the active node list and the traced array based on orphan encounter
         self.add_links(links_to_create, update=False, rem_orphans=rem_orphans)
+        
+        # exponential sampler associated with this network
+        self.sampler = ExpSampler(size=presample_size) if presample_size else None
                              
         return self
         
@@ -134,11 +138,15 @@ class Network(nx.Graph):
                 
         self.add_edges_from(links_to_add)
         self.remove_edges_from(links_to_rem)
-        
+
         if update:
             self.update_counts()
         
         return self
+    
+    def reinit_for_another_iter(self, first_inf_nodes):
+        self.init_states('S')
+        self.change_state(first_inf_nodes, state='I', update=True)
     
     def init_states(self, state='S'):
         # Set all nodes back to state
@@ -340,9 +348,9 @@ class Network(nx.Graph):
             plt.show()
             
     
-def get_random(n=200, k=10, rem_orphans=False, weighted=False):
+def get_random(n=200, k=10, rem_orphans=False, presample_size=0, weighted=False):
     G = Network()
-    return G.init_random(n, k, rem_orphans, weighted)
+    return G.init_random(n, k, rem_orphans, presample_size, weighted)
        
 def get_dual(G, overlap=None, z_add=0, z_rem=5, keep_nodes_percent=1, maintain_overlap=True, count_importance=1):
     N = deepcopy(G)

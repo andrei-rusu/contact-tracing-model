@@ -6,11 +6,10 @@
 #
 #SBATCH --job-name="Epidemic Grid Simulation"
 #SBATCH --ntasks-per-node=20     # Tasks per node
-###SBATCH --ntasks=1               # Number of total tasks
 #SBATCH --nodes=1                # Number of nodes requested
-#SBATCH --time=00:30:00          # walltime
-#SBATCH -o data/run/job_output/slurm/slurm.out        # STDOUT
-#SBATCH -e data/run/job_output/slurm/slurm.err        # STDERR
+#SBATCH --time=01:00:00          # walltime
+#SBATCH -o data/run/job_output/slurm/slurm-%A_$a.out        # STDOUT
+#SBATCH -e data/run/job_output/slurm/slurm-%A_$a.err        # STDERR
 
 if [ -z "$SLURM_ARRAY_TASK_ID" ]
 then
@@ -28,12 +27,13 @@ gridentry=($(python lib/gridsearch.py --id $SLURM_ARRAY_TASK_ID))
 #The entries are:
 # taut (contact tracing rate); taur (random tracing / testing rate); 
 # overlap (app uptake); pa (prob of being asymptomatic)
-taut=${gridentry[0]}
-taur=${gridentry[1]}
-pa=${gridentry[2]}
-overlap=${gridentry[3]}
+uptake=${gridentry[0]}
+taut=${gridentry[1]}
+taur=${gridentry[2]}
+pa=${gridentry[3]}
+overlap=${gridentry[4]}
 
-newfile="data/run/batch2_slurm/simresult_id"$SLURM_ARRAY_TASK_ID"_"$taut"_"$taur"_"$overlap".json"
+newfile="data/run/batch3_slurm/simresult_id"$SLURM_ARRAY_TASK_ID"_"$taut"_"$taur"_"$uptake".json"
 
 # Needed such that matplotlib does not produce error because XDG_RUNTIME_DIR not set
 export MPLBACKEND=Agg
@@ -41,14 +41,21 @@ export MPLBACKEND=Agg
 python run.py \
     --netsize 1000 \
     --k 10 \
-    --multip True \
-    --model "covid" \
-    --dual True \
+    --multip 3 \
+    --model 'covid' \
+    --dual 1 \
     --overlap $overlap \
-    --nnets 5 \
+    --uptake $uptake \
+    --maintain_overlap False \
+    --nnets 30 \
     --niters 20 \
     --separate_traced True \
-    --noncomp .02 \
+    --avg_without_earlystop True \
+    --first_inf 1 \
+    --earlystop_margin 4 \
+    --rem_orphans True \
+    --noncomp .002 \
+    --presample 500 \
     --pa $pa \
     --taut $taut \
     --taur $taur > $newfile

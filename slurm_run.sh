@@ -5,12 +5,12 @@
 # - these can be overridden on the qsub command line
 #
 #SBATCH --job-name="Epidemic Simulation"
-###SBATCH --ntasks-per-node=1     # Tasks per node
-#SBATCH --ntasks=1               # Number of total tasks
+#SBATCH --ntasks-per-node=8     # Tasks per node
+###SBATCH --ntasks=1               # Number of total tasks
 #SBATCH --nodes=1                # Number of nodes requested
 #SBATCH --time=00:30:00          # walltime
-#SBATCH -o data/run/job_output/slurm/slurm.out        # STDOUT
-#SBATCH -e data/run/job_output/slurm/slurm.err        # STDERR
+#SBATCH -o data/run/job_output/slurm/slurm-%A_%a.out        # STDOUT
+#SBATCH -e data/run/job_output/slurm/slurm-%A_%a.err        # STDERR
 
 if [ -z "$SLURM_ARRAY_TASK_ID" ]
 then
@@ -31,17 +31,18 @@ source activate contact
 python run.py \
     --netsize $NETSIZE \
     --k 10 \
-    --multip True \
+    --multip 3 \
     --model 'covid' \
     --dual 1 \
     --overlap 1 \
     --uptake .5 \
     --maintain_overlap False \
-    --nnets 3 \
-    --niters 3 \
+    --nnets 4 \
+    --niters 4 \
     --separate_traced True \
-    --taut .01 \
-    --taur .01 > $newfile
+    --noncomp 0 \
+    --taut .1 \
+    --taur .1 > $newfile
 
 # Remove running artefacts from sim results
 sed -i -n '/args/,$p' $newfile

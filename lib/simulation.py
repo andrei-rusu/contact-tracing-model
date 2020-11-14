@@ -73,13 +73,14 @@ class Simulation():
             trace_funcs = self.trace_funcs
             noncompliance_rate_func = self.noncompliance
         except:
-            # collect only the tracing function that actually exist in self.trans based on each state
+            # collect only the tracing function that actually exist in self.trans based on each traceable state
             trace_funcs = {
-                s : dict(trans[s]).get(traced_state, None) for s in traceable_states  
+                s : dict(trans[s])[traced_state] for s in traceable_states if traced_state in dict(trans[s])
             }
             self.trace_funcs = trace_funcs
             
             # get the noncompliance function if one exists in transitions
+            # also takes into account whether no transition to T has been defined, in which case no transition to N can happen
             noncompliance_rate_func = \
                 dict(self.trans[traced_state]).get(noncompliant_state, None) if traced_state in self.trans else None
             self.noncompliace = noncompliance_rate_func
