@@ -5,13 +5,13 @@
 # - these can be overridden on the qsub command line
 #
 #PBS -l nodes=1:ppn=16
-#PBS -l walltime=00:20:00
+#PBS -l walltime=00:45:00
 #PBS -t 1
 #PBS -e data/run/job_output/pbs/error
 #PBS -o data/run/job_output/pbs/output
 
 # If this is run as a bash script, no PBS var will be set, so set vars
-if [ -z "$PBS_O_WORKDIR" ]
+if [ -z "$PBS_ARRAYID" ]
 then
     PBS_O_WORKDIR='.'
     PBS_ARRAYID=0
@@ -19,6 +19,8 @@ fi
 
 #Change to directory from which job was submitted
 cd $PBS_O_WORKDIR
+#Set parameter as if run on SLURM rather than PBS
+SLURM_ARRAY_TASK_ID=$PBS_ARRAYID
 
 module load conda/4.4.0
 source activate contact
@@ -34,13 +36,13 @@ taur=${gridentry[2]}
 pa=${gridentry[3]}
 overlap=${gridentry[4]}
 
-newfile="data/run/batch3_pbs/simresult_id"$SLURM_ARRAY_TASK_ID"_"$taut"_"$taur"_"$uptake"_20.json"
+newfile="data/run/batch3_pbs/simresult_id"$SLURM_ARRAY_TASK_ID"_"$taut"_"$taur"_"$uptake"_10.json"
 
 # Needed such that matplotlib does not produce error because XDG_RUNTIME_DIR not set
 export MPLBACKEND=Agg
 
 python run.py \
-    --netsize 1000 \
+    --netsize 10000 \
     --k 10 \
     --multip 3 \
     --model 'covid' \
@@ -56,7 +58,7 @@ python run.py \
     --earlystop_margin 4 \
     --rem_orphans True \
     --noncomp .002 \
-    --presample 500 \
+    --presample 3000 \
     --pa $pa \
     --taut $taut \
     --taur $taur > $newfile
