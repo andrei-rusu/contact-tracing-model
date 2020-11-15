@@ -140,8 +140,8 @@ class EngineDual(Engine):
             plt.show()
 
         # simulation objects
-        sim_true = true_net.get_simulator(self.trans_true)
-        sim_know = know_net.get_simulator(self.trans_know)
+        sim_true = true_net.get_simulator(self.trans_true, isolate_S=args.isolate_s)
+        sim_know = know_net.get_simulator(self.trans_know, isolate_S=args.isolate_s)
         
         # number of initial infected
         inf = args.first_inf

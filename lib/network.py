@@ -30,15 +30,17 @@ STATES_COLOR_MAP = {
 
 class Network(nx.Graph):
     
-    def get_simulator(self, trans):
-        return Simulation(self, trans)
+    def get_simulator(self, trans, isolate_S=True):
+        return Simulation(self, trans, isolate_S)
     
     def __init__(self, **kwds):
         # Atomic Counter for node ids
         self.cont = itertools.count()
         # Initialize pos to None - a new spring layout is created when first drawn
         self.pos = None
-        # Overlap after noising - initially perfect overlap, changes after calling 'noising_links'
+        # whether this is an original or a dual network - this is needed when drawing
+        self.is_dual = False
+        # Overlap after noising - initially perfect overlap, MAY change after calling 'noising_links'
         self.overlap = 1
         # Maintain 'active' (not orphans) node list + neighbor counts; and inf + traced states for all nodes
         self.node_list = []
@@ -52,7 +54,7 @@ class Network(nx.Graph):
         
         super().__init__(**kwds)
         
-    def init_random(self, n=200, k=10, rem_orphans=False, presample_size=0, weighted=False):
+    def init_random(self, n=200, k=10, rem_orphans=False, presample_size=0, weighted=False, count_importance=1):
         # Add nodes in state 'S'
         self.add_mult(n, 'S')
         # Add random links with degree k
@@ -66,7 +68,8 @@ class Network(nx.Graph):
         # Add the random edges with/without weights depending on 'weighted' parameter
         # This also updates the active node list and the traced array based on orphan encounter
         self.add_links(links_to_create, update=False, rem_orphans=rem_orphans)
-        
+        # attach a neighbor count importance to this network
+        self.count_importance = count_importance
         # exponential sampler associated with this network
         self.sampler = ExpSampler(size=presample_size) if presample_size else None
                              
@@ -316,7 +319,7 @@ class Network(nx.Graph):
         
     def draw(self, pos=None, show=True, ax=None, seed=43):
         # for the true network, colors for all nodes are based on their state
-        if self.overlap == 1:
+        if not self.is_dual:
             colors = list(map(lambda x: STATES_COLOR_MAP[x], self.node_states))
         # for the dual network, when no explicit T state set, give priority to node_traced == True as if 'T' state
         # also give priority to node_traced == False as if 'N' state IF the node has been traced before (has a traced_time)
@@ -348,11 +351,12 @@ class Network(nx.Graph):
             plt.show()
             
     
-def get_random(n=200, k=10, rem_orphans=False, presample_size=0, weighted=False):
+def get_random(n=200, k=10, rem_orphans=False, presample_size=0, weighted=False, count_importance=1):
     G = Network()
-    return G.init_random(n, k, rem_orphans, presample_size, weighted)
+    return G.init_random(n, k, rem_orphans, presample_size, weighted, count_importance)
        
 def get_dual(G, overlap=None, z_add=0, z_rem=5, keep_nodes_percent=1, maintain_overlap=True, count_importance=1):
     N = deepcopy(G)
+    N.is_dual = True
     N.count_importance = count_importance
     return N.noising_links(overlap, z_add, z_rem, keep_nodes_percent, maintain_overlap, update=True)

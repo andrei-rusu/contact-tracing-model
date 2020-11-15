@@ -8,9 +8,10 @@ class SimEvent(Event):
 
 class Simulation():
     
-    def __init__(self, net, trans):
+    def __init__(self, net, trans, isolate_S=True):
         self.net = net
         self.trans = trans
+        self.isolate_S = isolate_S
         self.time = 0
         
     def get_next_event(self):
@@ -23,6 +24,7 @@ class Simulation():
         net = self.net
         trans = self.trans
         time = self.time
+        isolate_S = self.isolate_S
         node_list = net.node_list
         node_states = net.node_states
         node_traced = net.node_traced
@@ -30,7 +32,7 @@ class Simulation():
         for nid in node_list:
             current_state = node_states[nid]
             # if the current node is traced, it should not be possible to move from 'S'
-            if node_traced[nid] and current_state == 'S':
+            if isolate_S and node_traced[nid] and current_state == 'S':
                 continue
             for to, rate_func in trans[current_state]:
                 # rate_func is a lambda expression waiting for a net and a node id

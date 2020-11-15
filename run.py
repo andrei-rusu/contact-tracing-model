@@ -26,7 +26,7 @@ PARAMETER_DEFAULTS = {
     'gammatau': None, # recovery rate for traced people (if None, global gamma is used)
     'taur': 0.1, 'taut': 0.1, # random tracing (testing) + contract-tracing rate which will be multiplied with no of traced contacts
     'taut_two': 0.1, # contract-tracing rate for the second tracing network (if exists)
-    'noncomp': .002, # noncompliance rate
+    'noncomp': .02, # noncompliance rate
     'noncomp_time': True, # whether the noncomp rate will be multiplied by time diference between tracing and current time
     'netsize': 1000, 'k': 10, # net size and avg degree
     'overlap': .8, 'overlap_two': .4, # overlaps for dual nets (second is used only if dual == 2)
@@ -35,9 +35,10 @@ PARAMETER_DEFAULTS = {
     'uptake': 1., 'maintain_overlap': True, 
     'nnets': 1, 'niters': 1, 'nevents': 0, # running number of nets, iterations per net and events (if 0, until no more events)
     'multip': 1, # 0 - no multiprocess, 1 - multiprocess nets, 2 - multiprocess iters, 3 - multiprocess nets and iters (half-half cpus)
-    'draw': False, 'draw_iter': False, 'dual': 1, 'seed': None,
-    # None -> full_summary never called; False -> no summary printing, True -> print summary as well
-    'summary_print': -1,
+    'dual': 1, # 0 - tracing happens on same net as infection, 1 - one dual net for tracing, 2 - two dual nets for tracing
+    'isolate_s': True, # whether or not Susceptible people are isolated (Note: they will not get infected unless noncompliant)
+    'draw': False, 'draw_iter': False, 'seed': None,
+    'summary_print': -1, # None -> full_summary never called; False -> no summary printing, True -> print summary as well
     'summary_splits': 1000, # how many time splits to use for the epidemic summary
     'separate_traced': False, # whether to have the Traced state separate from all the other states
     'model': 'sir', # can be sir, seir or covid
@@ -46,6 +47,7 @@ PARAMETER_DEFAULTS = {
     'presample': 0, # number of stateless exponential presamples (if 0, no presampling)
     'earlystop_margin': 0,
     'avg_without_earlystop': False, # whether alternative averages which have no early stopped iterations are to be computed
+    
     # COVID model specific parameters:
     'pa': 0.2, # probability of being asymptomatic (could also be 0.5)
     'rel_beta': .5, # relative infectiousness of Ip/Ia compared to Is (Imperial paper + Medrxiv paper)
@@ -88,67 +90,78 @@ def main(args):
     if not np.isscalar(args.ph): args.ph = args.ph[args.group]
     if not np.isscalar(args.lamdahr): args.lamdahr = args.lamdahr[args.group]
     if not np.isscalar(args.lamdahd): args.lamdahd = args.lamdahd[args.group]
+        
+    # single random tracing and noncompliance rates
+    taur = args.taur
+    rel_taur = args.rel_taur
+    noncomp = args.noncomp
+    # number of presamples stateless exponentials per each base rate
+    presample = args.presample
 
     # Transition dictionaries for each network will be populated based on args.model {state->list(state, trans_func)}
     trans_true_items, trans_know_items = get_transitions_for_model(args)
     # if no noncompliace rate is chosen, skip this transition
     # Note: optional argument time can be passed to make the noncompliance rate time dependent
-    if args.noncomp:
+    if noncomp:
         if args.noncomp_time:
-            noncomp_func = lambda net, nid, time: ut.expFactorTimesTimeDif(net, nid, current_time=time, lamda=args.noncomp)
+            noncomp_func = lambda net, nid, time: ut.expFactorTimesTimeDif(net, nid, current_time=time, lamda=noncomp)
         else:
-            noncomp_func = ut.get_stateless_exp_sampler(args.noncomp, args.presample)
+            noncomp_func = ut.get_stateless_exp_sampler(noncomp, presample)
         add_trans(trans_know_items, 'T', 'N', noncomp_func)
-    
-    # we can simulate with a range of tracing rates or with a single one
-    tracing_rates = np.atleast_1d(args.taut)
-    
+
     # populate these variables only if returns_last_net = True
     true_net = know_net = None
     
-    for tr_rate in tracing_rates:
+    # we can simulate with a range of tracing rates or with a single one, depending on args.taut supplied
+    tracing_rates = np.atleast_1d(args.taut)
+    for taut in tracing_rates:
         # tr_rate will be used as the tracing_net.count_importance
         
-        print('===== For taut =', tr_rate, '& taur =', args.taur, "=====")
-
-        # Tracing for 'S', 'E' happens over know_net depending only on the traced neighbor count of nid (no testing possible)
-        tr_func = (lambda net, nid: ut.expFactorTimesCountImportance(net, nid, state='T', base=0)) if tr_rate else None
-        add_trans(trans_know_items, 'S', 'T', tr_func)
-        add_trans(trans_know_items, 'E', 'T', tr_func)
+        print('=========================================================')
+        print('Running simulation with parameters:')
+        ut.pvar(args.netsize, args.k, args.dual, args.model, owners=False)
+        ut.pvar(args.overlap, args.uptake, args.maintain_overlap, owners=False)
+        ut.pvar(taut, taur, noncomp, args.noncomp_time, owners=False)
+        print('=========================================================\n')
         
-        # Test and trace functions
-        tr_and_test_func = None
-        tr_and_test_rel_func = None
-        if tr_rate or args.taur:
+        # a random tracing rate is needed before any tracing can happen
+        if taur > 0:
+            # Tracing for 'S', 'E' happens over know_net depending only on the traced neighbor count of nid (no testing possible)
+            # if no contact tracing rate then this transition will not be possible
+            tr_func = (lambda net, nid: ut.expFactorTimesCountImportance(net, nid, state='T', base=0)) if taut else None
+            add_trans(trans_know_items, 'S', 'T', tr_func)
+            add_trans(trans_know_items, 'E', 'T', tr_func)
+
+            # Test and trace functions
             # Tracing for I states which can be found via testing also depend on a random testing rate: args.taur
             tr_and_test_func = \
-                lambda net, nid: ut.expFactorTimesCountImportance(net, nid, state='T', base=args.taur)
+                lambda net, nid: ut.expFactorTimesCountImportance(net, nid, state='T', base=taur)
             # For certain states, random tracing is done at a smaller rate (Ia vs Is)
             tr_and_test_rel_func = \
-                lambda net, nid: ut.expFactorTimesCountImportance(net, nid, state='T', base=args.taur * args.rel_taur)
-        
-        # Update transition parameters based on the abvoe defined tracing functions
-        if is_covid:
-            # We assume 'I(p)' will not be spotted via testing (false negatives in the first week)
-            add_trans(trans_know_items, 'I', 'T', tr_func)
-            # Tracing for 'Ia' and 'Is' also depends on a random tracing rate (due to random testing)
-            add_trans(trans_know_items, 'Is', 'T', tr_and_test_func)
-            # Asymptomatics have a relative testing rate (lower number of asymptomatics actually get tested)
-            add_trans(trans_know_items, 'Ia', 'T', tr_and_test_rel_func)
-        else:
-            # in non-COVID models we assume all 'I' states can be spotted via testing
-            add_trans(trans_know_items, 'I', 'T', tr_and_test_func)
+                lambda net, nid: ut.expFactorTimesCountImportance(net, nid, state='T', base=taur * rel_taur)
+
+            # Update transition parameters based on the abvoe defined tracing functions
+            if is_covid:
+                # We assume 'I(p)' will not be spotted via testing (false negatives in the first week)
+                add_trans(trans_know_items, 'I', 'T', tr_func)
+                # Tracing for 'Ia' and 'Is' also depends on a random tracing rate (due to random testing)
+                add_trans(trans_know_items, 'Is', 'T', tr_and_test_func)
+                # Asymptomatics have a relative testing rate (lower number of asymptomatics actually get tested)
+                add_trans(trans_know_items, 'Ia', 'T', tr_and_test_rel_func)
+            else:
+                # in non-COVID models we assume all 'I' states can be spotted via testing
+                add_trans(trans_know_items, 'I', 'T', tr_and_test_func)
         
         
         nnets = args.nnets
         net_range = range(nnets)
         # Multiprocessing object to use for each network initialization
         engine = EngineNet(args=args, first_inf_nodes=first_inf_nodes, no_exposed=no_exposed, is_covid=is_covid,
-                          tr_rate=tr_rate, trans_true_items=trans_true_items, trans_know_items=trans_know_items)
+                          tr_rate=taut, trans_true_items=trans_true_items, trans_know_items=trans_know_items)
 
         if args.multip == 1:
             with Pool() as pool:
-                for inet, net_events in enumerate(ut.tqdm_redirect(pool.imap(engine, net_range), total=args.nnets, 
+                for inet, net_events in enumerate(ut.tqdm_redirect(pool.imap(engine, net_range), total=nnets, 
                                                                 desc='Networks simulation progress')):
                     # Record sim results
                     stats.sim_summary[inet] = net_events
@@ -157,7 +170,7 @@ def main(args):
             # allocate half cpus to joblib for parallelizing simulations for different network initializations
             jobs = int(cpu_count() / 2)
             with ut.NoDaemonPool(jobs) as pool:
-                for inet, net_events in enumerate(ut.tqdm_redirect(pool.imap(engine, net_range), total=args.nnets, 
+                for inet, net_events in enumerate(ut.tqdm_redirect(pool.imap(engine, net_range), total=nnets, 
                                                                 desc='Networks simulation progress')):
                     # Record sim results
                     stats.sim_summary[inet] = net_events
@@ -178,7 +191,7 @@ def main(args):
                 stats.sim_summary[inet] = net_events
 
                     
-        stats.results_for_param(tr_rate)
+        stats.results_for_param(taut)
         
     if args.summary_print != -1:
         return stats.full_summary(args.summary_splits, args.summary_print)

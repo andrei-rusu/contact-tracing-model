@@ -236,18 +236,24 @@ def rel(*modules):
     for module in modules:
         importlib.reload(module)
         
-# prints all variables specified and their value in the current frame
-def pvar(*var):
+# prints all variables specified in the current frame and their value
+def pvar(*var, owners=True):
+    frame = inspect.currentframe().f_back
+    s = inspect.getframeinfo(frame).code_context[0]
+    r = re.search(r"\((.*)\)", s).group(1)
+    fi = r.split(', ')
+    last_var = len(var) - 1
     for i, x in enumerate(var):
         if x == '\n':
             print()
         else:
-            frame = inspect.currentframe().f_back
-            s = inspect.getframeinfo(frame).code_context[0]
-            r = re.search(r"\((.*)\)", s).group(1)
-            fi = r.split(', ')
-            print("{} = {}, ".format(fi[i],x), end="", flush=True)
-    print('\n')
+            if not owners:
+                fi[i] = fi[i].split('.')[-1]
+            format_to_print = "{} = {}, "
+            if i == last_var:
+                format_to_print = format_to_print[:-2]
+            print(format_to_print.format(fi[i],x), end="", flush=True)
+    print()
     
 # times a function
 def timer(func, *args):
