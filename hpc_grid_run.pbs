@@ -4,8 +4,8 @@
 # set default resource requirements for job 
 # - these can be overridden on the qsub command line
 #
-#PBS -l nodes=1:ppn=15
-#PBS -l walltime=04:30:00
+#PBS -l nodes=1:ppn=16
+#PBS -l walltime=00:20:00
 #PBS -t 1
 #PBS -e data/run/job_output/pbs/error
 #PBS -o data/run/job_output/pbs/output
@@ -24,27 +24,39 @@ module load conda/4.4.0
 source activate contact
 
 #Get a specific parameter configuration based on the ARRAY_ID using the gridsearch.py script
-gridentry=($(python lib/gridsearch.py --id $PBS_ARRAYID))
+gridentry=($(python lib/gridsearch.py --id $SLURM_ARRAY_TASK_ID))
 #The entries are:
 # taut (contact tracing rate); taur (random tracing / testing rate); 
 # overlap (app uptake); pa (prob of being asymptomatic)
-taut=${gridentry[0]}
-taur=${gridentry[1]}
-pa=${gridentry[2]}
-overlap=${gridentry[3]}
+uptake=${gridentry[0]}
+taut=${gridentry[1]}
+taur=${gridentry[2]}
+pa=${gridentry[3]}
+overlap=${gridentry[4]}
 
-newfile="data/run/batch2/simresult_id"$PBS_ARRAYID"_"$taut"_"$taur"_"$overlap".json"
+newfile="data/run/batch3_pbs/simresult_id"$SLURM_ARRAY_TASK_ID"_"$taut"_"$taur"_"$uptake"_20.json"
+
+# Needed such that matplotlib does not produce error because XDG_RUNTIME_DIR not set
+export MPLBACKEND=Agg
 
 python run.py \
-    --netsize 10000 \
+    --netsize 1000 \
     --k 10 \
-    --multip True \
+    --multip 3 \
     --model 'covid' \
-    --dual True \
+    --dual 1 \
     --overlap $overlap \
-    --nnets 8 \
-    --niters 20 \
+    --uptake $uptake \
+    --maintain_overlap False \
+    --nnets 40 \
+    --niters 15 \
     --separate_traced True \
+    --avg_without_earlystop True \
+    --first_inf 1 \
+    --earlystop_margin 4 \
+    --rem_orphans True \
+    --noncomp .002 \
+    --presample 500 \
     --pa $pa \
     --taut $taut \
     --taur $taur > $newfile

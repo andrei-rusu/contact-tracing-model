@@ -398,15 +398,20 @@ class ListDelegator(list):
         self[0].draw(*args, ax=ax[0], **kw)
         self[1].draw(*args, ax=ax[1], **kw)
 
-# redefine Pathos process pool via inheritance to allow for no-daemonic processes
-class NoDaemonProcess(Process):
-    # make 'daemon' attribute always return False
-    def _get_daemon(self):
-        return False
-    def _set_daemon(self, value):
-        pass
-    daemon = property(_get_daemon, _set_daemon)
 
+class NoDaemonProcess(Process):
+    """Monkey-patch process to ensure it is never daemonized"""
+    @property
+    def daemon(self):
+        return False
+
+    @daemon.setter
+    def daemon(self, val):
+        pass
+    
 class NoDaemonPool(Pool):
-    Process = NoDaemonProcess
+    def Process(self, *args, **kwds):
+        proc = super().Process(*args, **kwds)
+        proc.__class__ = NoDaemonProcess
+        return proc
     
