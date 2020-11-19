@@ -28,7 +28,8 @@ PARAMETER_DEFAULTS = {
     'taut_two': 0.1, # contract-tracing rate for the second tracing network (if exists)
     'noncomp': .02, # noncompliance rate
     'noncomp_time': True, # whether the noncomp rate will be multiplied by time diference between tracing and current time
-    'netsize': 1000, 'k': 10, # net size and avg degree
+    'netsize': 1000, 'k': 10, # net size, avg degree, 
+    'nettype': 'random', 'p': .05, # network wiring type and a rewire prob for various graph types
     'overlap': .8, 'overlap_two': .4, # overlaps for dual nets (second is used only if dual == 2)
     'zadd': 0, 'zrem': 5, # if no overlap given, these values are used for z_add and z_rem; z_add also informs overlap of additions
     'zadd_two': 0, 'zrem_two': 5, # these are used only if dual == 2 and no overlap_manual is given
@@ -37,7 +38,8 @@ PARAMETER_DEFAULTS = {
     'multip': 1, # 0 - no multiprocess, 1 - multiprocess nets, 2 - multiprocess iters, 3 - multiprocess nets and iters (half-half cpus)
     'dual': 1, # 0 - tracing happens on same net as infection, 1 - one dual net for tracing, 2 - two dual nets for tracing
     'isolate_s': True, # whether or not Susceptible people are isolated (Note: they will not get infected unless noncompliant)
-    'draw': False, 'draw_iter': False, 'seed': None,
+    'trace_once': False, # if True a node cannot become traced again after being noncompliant
+    'draw': False, 'draw_iter': False, 'seed': None, 'netseed': None,
     'summary_print': -1, # None -> full_summary never called; False -> no summary printing, True -> print summary as well
     'summary_splits': 1000, # how many time splits to use for the epidemic summary
     'separate_traced': False, # whether to have the Traced state separate from all the other states
@@ -47,7 +49,7 @@ PARAMETER_DEFAULTS = {
     'presample': 0, # number of stateless exponential presamples (if 0, no presampling)
     'earlystop_margin': 0,
     'avg_without_earlystop': False, # whether alternative averages which have no early stopped iterations are to be computed
-    
+    'efforts': False,
     # COVID model specific parameters:
     'pa': 0.2, # probability of being asymptomatic (could also be 0.5)
     'rel_beta': .5, # relative infectiousness of Ip/Ia compared to Is (Imperial paper + Medrxiv paper)
@@ -90,28 +92,17 @@ def main(args):
     if not np.isscalar(args.ph): args.ph = args.ph[args.group]
     if not np.isscalar(args.lamdahr): args.lamdahr = args.lamdahr[args.group]
     if not np.isscalar(args.lamdahd): args.lamdahd = args.lamdahd[args.group]
-        
-    # single random tracing and noncompliance rates
-    taur = args.taur
-    rel_taur = args.rel_taur
-    noncomp = args.noncomp
-    # number of presamples stateless exponentials per each base rate
-    presample = args.presample
 
     # Transition dictionaries for each network will be populated based on args.model {state->list(state, trans_func)}
     trans_true_items, trans_know_items = get_transitions_for_model(args)
-    # if no noncompliace rate is chosen, skip this transition
-    # Note: optional argument time can be passed to make the noncompliance rate time dependent
-    if noncomp:
-        if args.noncomp_time:
-            noncomp_func = lambda net, nid, time: ut.expFactorTimesTimeDif(net, nid, current_time=time, lamda=noncomp)
-        else:
-            noncomp_func = ut.get_stateless_exp_sampler(noncomp, presample)
-        add_trans(trans_know_items, 'T', 'N', noncomp_func)
 
     # populate these variables only if returns_last_net = True
     true_net = know_net = None
     
+    # single random tracing and noncompliance rates
+    taur = args.taur
+    rel_taur = args.rel_taur
+    presample = args.presample
     # we can simulate with a range of tracing rates or with a single one, depending on args.taut supplied
     tracing_rates = np.atleast_1d(args.taut)
     for taut in tracing_rates:
@@ -121,24 +112,25 @@ def main(args):
         print('Running simulation with parameters:')
         ut.pvar(args.netsize, args.k, args.dual, args.model, owners=False)
         ut.pvar(args.overlap, args.uptake, args.maintain_overlap, owners=False)
-        ut.pvar(taut, taur, noncomp, args.noncomp_time, owners=False)
+        ut.pvar(taut, taur, args.noncomp, args.noncomp_time, owners=False)
         print('=========================================================\n')
         
         # a random tracing rate is needed before any tracing can happen
         if taur > 0:
             # Tracing for 'S', 'E' happens over know_net depending only on the traced neighbor count of nid (no testing possible)
             # if no contact tracing rate then this transition will not be possible
-            tr_func = (lambda net, nid: ut.expFactorTimesCountImportance(net, nid, state='T', base=0)) if taut else None
+            tr_func = ut.get_stateful_exp_sampler(
+                       'expFactorTimesCountImportance', state='T', presample=presample) if taut else None
             add_trans(trans_know_items, 'S', 'T', tr_func)
             add_trans(trans_know_items, 'E', 'T', tr_func)
 
             # Test and trace functions
             # Tracing for I states which can be found via testing also depend on a random testing rate: args.taur
-            tr_and_test_func = \
-                lambda net, nid: ut.expFactorTimesCountImportance(net, nid, state='T', base=taur)
+            tr_and_test_func = ut.get_stateful_exp_sampler(
+                       'expFactorTimesCountImportance', state='T', base=taur, presample=presample)
             # For certain states, random tracing is done at a smaller rate (Ia vs Is)
-            tr_and_test_rel_func = \
-                lambda net, nid: ut.expFactorTimesCountImportance(net, nid, state='T', base=taur * rel_taur)
+            tr_and_test_rel_func = ut.get_stateful_exp_sampler(
+                       'expFactorTimesCountImportance', state='T', base=(taur*rel_taur), presample=presample)
 
             # Update transition parameters based on the abvoe defined tracing functions
             if is_covid:
@@ -151,6 +143,11 @@ def main(args):
             else:
                 # in non-COVID models we assume all 'I' states can be spotted via testing
                 add_trans(trans_know_items, 'I', 'T', tr_and_test_func)
+        
+        # if the tracing events are not separate from the infection events, then allow for traced individuals to get recovered
+        if not args.separate_traced:
+            # Recovery for traced nodes is network independent at rate gammatau
+            add_trans(trans_know, 'T', 'R', get_stateless_exp_sampler(args.gammatau, presample))
         
         
         nnets = args.nnets

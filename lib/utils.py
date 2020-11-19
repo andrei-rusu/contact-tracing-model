@@ -42,10 +42,12 @@ def decode_pair(i):
     first = i - second*(second-1)//2 
     return first, second
 
-def rand_pairs(n, m):
+def rand_pairs(n, m, seed=None):
     """
     Returns m random pairs of integers up to n by using triangular root decoding
     """
+    if seed is not None:
+        random.seed(seed)
     return [decode_pair(i) for i in random.sample(range(n*(n-1)//2),m)]
 
 def rand_pairs_excluding(n, m, to_exclude):
@@ -65,46 +67,66 @@ def rand_pairs_excluding(n, m, to_exclude):
 
 
 def get_stateless_exp_sampler(lamda, presample=0):
-    return (lambda net, nid, time=None: \
-            net.sampler.get_next_sample(lamda) if presample else -math.log(1. - random.random()) / lamda)
-    
+    if presample:
+        return (lambda net, nid, time=None: lamda)
+    return (lambda net, nid, time=None: -math.log(1. - random.random()) / lamda)
 
-def exp(lamda=1):
-    """
-    Sample from an Exponential
-    """
-    if lamda:
-        return -(math.log(1. - random.random()) / lamda)
-    return float('inf')
+def get_stateful_exp_sampler(sampler_type='expFactorTimesCountMultiState', *args, presample=0, **kwargs):
+    if presample: 
+        sampler_type += '_rate'
+    func = globals()[sampler_type]
+    return (lambda net, nid, time=None: func(net, nid, *args, current_time=time, **kwargs))
 
-def expFactorTimesTimeDif(net, nid, current_time=100, lamda=1):
-    """
-    Sample from an Exponential with tracing time difference
-    """
-    lamda *= current_time - net.traced_time[nid]
-    if lamda:
-        return -(math.log(1. - random.random()) / lamda)
-    return float('inf')    
-    
-def expFactorTimesCount(net, nid, state='I', lamda=1):
+
+def expFactorTimesCount(net, nid, state='I', lamda=1, **kwargs):
     """
     Sample from an Exponential with Neighbour counts
     """
-    lamda *= net.node_counts[nid][state]
-    if lamda:
-        return -(math.log(1. - random.random()) / lamda)
+    exp_param = lamda * net.node_counts[nid][state]
+    if exp_param:
+        return -(math.log(1. - random.random()) / exp_param)
     return float('inf')
 
-def expFactorTimesCountImportance(net, nid, state='T', base=0):
+def expFactorTimesCount_rate(net, nid, state='I', lamda=1, **kwargs):
+    """
+    Sample from an Exponential with Neighbour counts
+    """
+    exp_param = lamda * net.node_counts[nid][state]
+    return exp_param
+
+def expFactorTimesTimeDif(net, nid, lamda=1, current_time=100, **kwargs):
+    """
+    Sample from an Exponential with tracing time difference
+    """
+    exp_param = lamda * (current_time - net.traced_time[nid])
+    if exp_param:
+        return -math.log(1. - random.random()) / exp_param
+    return float('inf')
+
+def expFactorTimesTimeDif_rate(net, nid, current_time=100, lamda=1, **kwargs):
+    """
+    Sample from an Exponential with tracing time difference
+    """
+    exp_param = lamda * (current_time - net.traced_time[nid])
+    return exp_param
+    
+def expFactorTimesCountImportance(net, nid, state='T', base=0, **kwargs):
     """
     Sample from an Exponential with Neighbour counts weighted by network count_importance
     """
-    lamda = base + net.count_importance * net.node_counts[nid][state]
-    if lamda:
-        return -(math.log(1. - random.random()) / lamda)
-    return float('inf')    
+    exp_param = base + net.count_importance * net.node_counts[nid][state]
+    if exp_param:
+        return -math.log(1. - random.random()) / exp_param
+    return float('inf')
 
-def expFactorTimesCountMultiState(net, nid, states=['I'], lamda=1, rel_states=[], rel=1, debug=False):
+def expFactorTimesCountImportance_rate(net, nid, state='T', base=0, **kwargs):
+    """
+    Sample from an Exponential with Neighbour counts weighted by network count_importance
+    """
+    exp_param = base + net.count_importance * net.node_counts[nid][state]
+    return exp_param
+
+def expFactorTimesCountMultiState(net, nid, states=['I'], lamda=1, rel_states=[], rel=1, **kwargs):
     """
     lamda : multiplicative factor of exponential
     rel : relative importance
@@ -117,10 +139,27 @@ def expFactorTimesCountMultiState(net, nid, states=['I'], lamda=1, rel_states=[]
         exp_param_states += counts[state]
     for state in rel_states:
         exp_param_rel_states += counts[state]
-    lamda *= exp_param_states + rel * exp_param_rel_states
-    if lamda:
-        return -(math.log(1. - random.random()) / lamda)
+    exp_param = lamda * (exp_param_states + rel * exp_param_rel_states)
+    if exp_param:
+        return -math.log(1. - random.random()) / exp_param
     return float('inf')
+
+def expFactorTimesCountMultiState_rate(net, nid, states=['I'], lamda=1, rel_states=[], rel=1, **kwargs):
+    """
+    lamda : multiplicative factor of exponential
+    rel : relative importance
+    states : the number of these states will be multiplied with lamda
+    rel_states : the number fo these states will be multiplied with lamda * rel
+    """
+    exp_param_states = exp_param_rel_states = 0
+    counts = net.node_counts[nid]
+    for state in states:
+        exp_param_states += counts[state]
+    for state in rel_states:
+        exp_param_rel_states += counts[state]
+    exp_param = lamda * (exp_param_states + rel * exp_param_rel_states)
+    return exp_param
+
 
 
 def get_boxplot_statistics(data, axis=0, avg_without_idx=None):
@@ -308,9 +347,14 @@ def process_json_results(path=None, print_id_fail=True):
             json_file = get_json(file)
             # the json files has keys: 'args' and the single 'taut' value chosen
             args = json_file['args']
+            # ignore results for taur=0 as we ignore the case where no testing is done
+            if args['taur'] == 0:
+                continue
             taut = np.atleast_1d(args['taut'])[0]
             taur = args['taur']
             over = float(round(args['overlap'], 2))
+            uptake = float(round(args.get('uptake', 0.), 2))
+            pa = args['pa']
             try:
                 # If only a single taut value present in running args, the results key is 'res'
                 results = json_file['res']
@@ -321,7 +365,7 @@ def process_json_results(path=None, print_id_fail=True):
                     results = json_file[str(taut)]
                 except:
                     results = json_file[str(int(taut))]
-            all_sim_res[over][taut][taur] = results
+            all_sim_res[pa][uptake][over][taut][taur] = results
         except json.JSONDecodeError:
             if print_id_fail:
                 print(int(re.findall('id(.*?)_', file)[0]), end=",")

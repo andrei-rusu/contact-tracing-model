@@ -1,0 +1,26 @@
+#!/bin/bash
+# Job script to run pbs job in job array
+#=============================================
+# set default resource requirements for job 
+# - these can be overridden on the qsub command line
+#
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=00:30:00
+#PBS -t 5-10
+#PBS -e data/verify/error
+#PBS -o data/verify/output
+
+#Change to directory from which job was submitted
+cd $PBS_O_WORKDIR
+
+if [ -z "$PBS_ARRAYID" ]
+then
+    PBS_ARRAYID=0
+fi
+
+newfile="data/verify/counts"$PBS_ARRAYID".txt"
+
+module load conda/4.4.0
+source activate contact
+
+python verify_env.py --nid $PBS_ARRAYID > $newfile

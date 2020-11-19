@@ -25,7 +25,10 @@ sampler = ParameterGrid(GRID)
 
 
 def len_grid():
-    print(len(sampler))
+    return len(sampler)
+    
+def get_job_ids():
+    print('0-' + str(len_grid() - 1))
 
 def get_parameters_for_id(jid):
     # the order of variables is given by string name in decreasing order
