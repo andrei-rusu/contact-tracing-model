@@ -39,6 +39,7 @@ class StatsProcessor():
         """
         # local for efficiency
         args = self.args
+        efforts = args.efforts
         
         summary = defaultdict(dict)
         summary['args'] = vars(args).copy()
@@ -117,8 +118,9 @@ class StatsProcessor():
                     accumulator[1][j][ser_index] = last_idx.totalInfected
                     accumulator[2][j][ser_index] = last_idx.totalTraced
                     accumulator[3][j][ser_index] = last_idx.totalRecovered
-                    accumulator[4][j][ser_index] = last_idx.tracingEffortRandom
-                    accumulator[5][j][ser_index] = last_idx.tracingEffortContact[0]
+                    if efforts:
+                        accumulator[4][j][ser_index] = last_idx.tracingEffortRandom
+                        accumulator[5][j][ser_index] = last_idx.tracingEffortContact[0]
                     accumulator[6][j][ser_index] = last_idx.nH
                     accumulator[7][j][ser_index] = last_idx.totalHospital
                     accumulator[8][j][ser_index] = last_idx.totalDeath
@@ -177,7 +179,7 @@ class StatsProcessor():
             without_idx = idx_early_stopped if args.avg_without_earlystop else None
                         
             ###############
-            # compute averages and other statistics for the over-time simulation results
+            # compute averages and other statistics for all simulation result parameters over time
             stats_for_timed_parameters = []
             for i in range(num_vars):
                 stats_for_timed_parameters.append(get_boxplot_statistics(accumulator[i], axis=1, avg_without_idx=without_idx))
@@ -215,8 +217,9 @@ class StatsProcessor():
             current['average-total-recovered'] = stats_for_timed_parameters[3]
             current['average-overall-recovered'] = stats_for_timed_parameters[3][-1]
             
-            current['average-effort-random'] = stats_for_timed_parameters[4]
-            current['average-effort-contact'] = stats_for_timed_parameters[5]
+            if efforts:
+                current['average-effort-random'] = stats_for_timed_parameters[4]
+                current['average-effort-contact'] = stats_for_timed_parameters[5]
             
             current['average-hospital'] = stats_for_timed_parameters[6]
             current['average-max-hospital'] = stats_for_max_hos

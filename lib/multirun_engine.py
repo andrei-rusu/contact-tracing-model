@@ -181,8 +181,8 @@ class EngineDual(Engine):
             'totalRecovered' : 0,
             'totalHospital' : 0,
             'totalDeath' : 0,
-            'tracingEffortRandom' : -1,
-            'tracingEffortContact' : -1,
+            'tracingEffortRandom' : 0,
+            'tracingEffortContact' : [0],
         }
         
         # results over time recorded

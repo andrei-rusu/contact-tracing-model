@@ -73,8 +73,9 @@ def main(args):
     if args.seed == -1: args.seed = None
     if args.netseed == -1: args.netseed = None
     
-    # update number of first infected to reflect absolute values if args.first_inf given as percentage
-    if args.first_inf < 1: args.first_inf = int(args.first_inf * args.netsize)
+    # update number of first infected to reflect absolute values rather than percentage
+    # if args.first_inf >= 1 just turn the value into an int and use that as number of first infected
+    args.first_inf = int(args.first_inf) if args.first_inf >= 1 else int(args.first_inf * args.netsize)
     # Random first infected across simulations - seed random locally
     first_inf_nodes = random.Random(args.seed).sample(range(args.netsize), args.first_inf)
     

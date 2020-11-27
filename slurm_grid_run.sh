@@ -44,7 +44,7 @@ python run.py \
     --netsize 1000 \
     --k $k \
     --multip 3 \
-    --model 'covid' \
+    --model "covid" \
     --dual 1 \
     --overlap $overlap \
     --uptake $uptake \
