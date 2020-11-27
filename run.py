@@ -23,7 +23,7 @@ PARAMETER_DEFAULTS = {
     'eps': 1/3.7, # latency -> For Covid 3.7 days
     'gamma': 1/2.3, # global (spontaneus) recovey rate -> For Covid 2.3 days
     'spontan': False, # allow spontaneus recovery (for SIR and SEIR only, Covid uses this by default)
-    'gammatau': None, # recovery rate for traced people (if None, global gamma is used)
+    'gammatau': 0, # recovery rate for traced people (if 0, global gamma is used)
     'taur': 0.1, 'taut': 0.1, # random tracing (testing) + contract-tracing rate which will be multiplied with no of traced contacts
     'taut_two': 0.1, # contract-tracing rate for the second tracing network (if exists)
     'noncomp': .02, # noncompliance rate (default: each day the chance of going out of isolation increases by 2%)
@@ -40,7 +40,7 @@ PARAMETER_DEFAULTS = {
     'dual': 1, # 0 - tracing happens on same net as infection, 1 - one dual net for tracing, 2 - two dual nets for tracing
     'isolate_s': True, # whether or not Susceptible people are isolated (Note: they will not get infected unless noncompliant)
     'trace_once': False, # if True a node cannot become traced again after being noncompliant
-    'draw': False, 'draw_iter': False, 'seed': None, 'netseed': None,
+    'draw': False, 'draw_iter': False, 'seed': -1, 'netseed': -1,
     'summary_print': -1, # None -> full_summary never called; False -> no summary printing, True -> print summary as well
     'summary_splits': 1000, # how many time splits to use for the epidemic summary
     'r_window': 7, # number of days for Reff calculation
@@ -69,6 +69,10 @@ def main(args):
     # Will hold stats for all simulations
     stats = StatsProcessor(args)
     
+    # the following step ensures that unselected seeds are turned to None
+    if args.seed == -1: args.seed = None
+    if args.netseed == -1: args.netseed = None
+    
     # update number of first infected to reflect absolute values if args.first_inf given as percentage
     if args.first_inf < 1: args.first_inf = int(args.first_inf * args.netsize)
     # Random first infected across simulations - seed random locally
@@ -86,7 +90,7 @@ def main(args):
     if args.multip: args.draw = args.draw_iter = False
  
     # Set recovery rate for traced people based on whether gammatau was provided
-    if args.gammatau is None: args.gammatau = args.gamma
+    if not args.gammatau: args.gammatau = args.gamma
     
     # if age-group dependent vars have been provided as array, then choose the value based on inputted age-group 
     if not np.isscalar(args.ph): args.ph = args.ph[args.group]
