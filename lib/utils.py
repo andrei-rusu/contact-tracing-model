@@ -21,6 +21,11 @@ from time import time
 from multiprocess.context import Process
 from multiprocess.pool import Pool
 
+
+def pad_2d_list_variable_len(a, pad=0):
+    max_len = len(max(a, key=len))
+    return [i + [pad] * (max_len - len(i)) for i in a]
+
 def get_z_for_overlap(k=10, overlap=.08, include_add=False):
     if include_add:
         z = k * (1 - overlap) / (1 + overlap)
@@ -46,15 +51,15 @@ def rand_pairs(n, m, seed=None):
     """
     Returns m random pairs of integers up to n by using triangular root decoding
     """
-    if seed is not None:
-        random.seed(seed)
-    return [decode_pair(i) for i in random.sample(range(n*(n-1)//2),m)]
+    rand = random if seed is None else random.Random(seed)
+    return [decode_pair(i) for i in rand.sample(range(n*(n-1)//2),m)]
 
-def rand_pairs_excluding(n, m, to_exclude):
+def rand_pairs_excluding(n, m, to_exclude, seed=None):
     """
     Returns m random pairs of integers up to n by using triangular root decoding
     Also excludes to_exclude elements
     """
+    rand = random if seed is None else random.Random(seed)
     # decoding pairs range
     full_range = list(range(n*(n-1)//2))
     # this will hold all final pairs + to_exclude prior to removing to_exclude (sets will take care of adding with no repetition)
@@ -62,14 +67,14 @@ def rand_pairs_excluding(n, m, to_exclude):
     desired_len = len(to_exclude) + m
     # add until we have desired_len elements (extra m elements compared to original edge set)
     while len(pairs) != desired_len:
-        pairs.add(decode_pair(random.sample(full_range, 1)[0]))
+        pairs.add(decode_pair(rand.sample(full_range, 1)[0]))
     return pairs - to_exclude
 
 
 def get_stateless_exp_sampler(lamda, presample=0):
     if presample:
         return (lambda net, nid, time=None: lamda)
-    return (lambda net, nid, time=None: -math.log(1. - random.random()) / lamda)
+    return (lambda net, nid, time=None: (-math.log(1. - random.random()) / lamda))
 
 def get_stateful_exp_sampler(sampler_type='expFactorTimesCountMultiState', *args, presample=0, **kwargs):
     if presample: 
@@ -162,7 +167,7 @@ def expFactorTimesCountMultiState_rate(net, nid, states=['I'], lamda=1, rel_stat
 
 
 
-def get_boxplot_statistics(data, axis=0, avg_without_idx=None):
+def get_boxplot_statistics(data, axis=0, avg_without_idx=None, round_to=2):
     for_data = np.array(data)
     if axis:
         for_data = for_data.T
@@ -200,20 +205,20 @@ def get_boxplot_statistics(data, axis=0, avg_without_idx=None):
     # iterate through the statistics
     for i in range(len(means)):
         dct = {}
-        dct['mean'] = means[i].get_ydata()[0]
-        dct['std'] = stds[i]
+        dct['mean'] = round(means[i].get_ydata()[0], round_to)
+        dct['std'] = round(stds[i], 2)
         whisk1 = whisks[2*i].get_ydata()
         whisk2 = whisks[2*i+1].get_ydata()
-        dct['whislo'] = whisk1[1]
-        dct['q1'] = whisk1[0]
-        dct['med'] = meds[i].get_ydata()[0]
-        dct['q3'] = whisk2[0]
-        dct['whishi'] = whisk2[1]
+        dct['whislo'] = round(whisk1[1], round_to)
+        dct['q1'] = round(whisk1[0], round_to)
+        dct['med'] = round(meds[i].get_ydata()[0], round_to)
+        dct['q3'] = round(whisk2[0], round_to)
+        dct['whishi'] = round(whisk2[1], round_to)
         if avg_without_idx is not None:
             # Note: if avg_without_idx = [] it means the option was selected from args, but no simulation early stopped
             # In this case, we report the alternative = actual mean/std in order to be consistent across runs
-            dct['mean_wo'] = means_without[i] if avg_without_idx else dct['mean']
-            dct['std_wo'] = stds_without[i] if avg_without_idx else dct['std']
+            dct['mean_wo'] = round(means_without[i], round_to) if avg_without_idx else dct['mean']
+            dct['std_wo'] = round(stds_without[i], round_to) if avg_without_idx else dct['std']
         results.append(dct)
     return results
 

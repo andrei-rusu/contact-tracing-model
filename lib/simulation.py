@@ -15,7 +15,8 @@ class Simulation():
         self.isolate_S = isolate_S
         self.trace_once = trace_once
         self.time = 0
-        # Create Adapter to allow the rate returned by rate_func to be either a base rate (which shall be exp-sampled) or an exponential rate
+        # Create Adapter to allow the rate returned by rate_func to be either a base rate (which shall be exp-sampled) 
+        # or an exponential rate directly (which shall be left unchanged)
         if presample:
             sampler = get_sampler(size=presample, scale_one=True)
             self.sampling = lambda rate: (sampler.get_next_sample(rate) if rate else float('inf'))
@@ -74,6 +75,7 @@ class Simulation():
         node_list = net.node_list
         node_traced = net.node_traced
         node_states = net.node_states
+        traced_time = net.traced_time
         
         traceable_states = ['S', 'E', 'I', 'Ia', 'Is']
         traced_state = 'T'
@@ -150,18 +152,13 @@ class Simulation():
         self.net.change_state_fast_update(e.node, e.to)
         self.time = e.time
         
+    def run_event_no_update(self, e):
+        self.net.change_state(e.node, e.to, update=False)
+        self.time = e.time
+        
     def run_trace_event(self, e, to_traced=True):
         self.net.change_traced_state_fast_update(e.node, to_traced, e.time)
         self.time = e.time
-        
-        
-    def run_until(self, time_limit):
-        if self.time >= time_limit:
-            raise ValueError("WARNING: run_until called with a passed time")
-        e = get_next_event()
-        if e.time < time_limit:
-            run_event(e)
-        
         
     
         

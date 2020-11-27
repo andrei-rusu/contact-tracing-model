@@ -26,8 +26,9 @@ PARAMETER_DEFAULTS = {
     'gammatau': None, # recovery rate for traced people (if None, global gamma is used)
     'taur': 0.1, 'taut': 0.1, # random tracing (testing) + contract-tracing rate which will be multiplied with no of traced contacts
     'taut_two': 0.1, # contract-tracing rate for the second tracing network (if exists)
-    'noncomp': .02, # noncompliance rate
-    'noncomp_time': True, # whether the noncomp rate will be multiplied by time diference between tracing and current time
+    'noncomp': .02, # noncompliance rate (default: each day the chance of going out of isolation increases by 2%)
+    'noncomp_time': True, # whether the noncomp rate will be multiplied by time difference t_current - t_trace
+    'noncomp_after': 0, # period after which T becomes automatically N (nonisolating); 0 means disabled; 14 is standard quarantine
     'netsize': 1000, 'k': 10, # net size, avg degree, 
     'nettype': 'random', 'p': .05, # network wiring type and a rewire prob for various graph types
     'overlap': .8, 'overlap_two': .4, # overlaps for dual nets (second is used only if dual == 2)
@@ -42,9 +43,10 @@ PARAMETER_DEFAULTS = {
     'draw': False, 'draw_iter': False, 'seed': None, 'netseed': None,
     'summary_print': -1, # None -> full_summary never called; False -> no summary printing, True -> print summary as well
     'summary_splits': 1000, # how many time splits to use for the epidemic summary
+    'r_window': 7, # number of days for Reff calculation
     'separate_traced': False, # whether to have the Traced state separate from all the other states
     'model': 'sir', # can be sir, seir or covid
-    'first_inf': 1, # number of nodes infected at the start of sim
+    'first_inf': 1., # number of nodes infected at the start of sim
     'rem_orphans': False, # whether or not to remove orphans from the infection network (they will not move state)
     'presample': 0, # number of stateless exponential presamples (if 0, no presampling)
     'earlystop_margin': 0,
@@ -67,12 +69,10 @@ def main(args):
     # Will hold stats for all simulations
     stats = StatsProcessor(args)
     
-    # seed the random
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    
-    # Random first infected across simulations
-    first_inf_nodes = random.sample(range(args.netsize), args.first_inf)
+    # update number of first infected to reflect absolute values if args.first_inf given as percentage
+    if args.first_inf < 1: args.first_inf = int(args.first_inf * args.netsize)
+    # Random first infected across simulations - seed random locally
+    first_inf_nodes = random.Random(args.seed).sample(range(args.netsize), args.first_inf)
     
     # Boolean responsible for determining whether nInfectious = nInfected
     no_exposed = (args.model == 'sir')
@@ -144,7 +144,7 @@ def main(args):
                 # in non-COVID models we assume all 'I' states can be spotted via testing
                 add_trans(trans_know_items, 'I', 'T', tr_and_test_func)
         
-        # if the tracing events are not separate from the infection events, then allow for traced individuals to get recovered
+        # if the tracing events are not separate from the infection events, then allow for traced individuals to get Removed
         if not args.separate_traced:
             # Recovery for traced nodes is network independent at rate gammatau
             add_trans(trans_know, 'T', 'R', get_stateless_exp_sampler(args.gammatau, presample))
@@ -191,7 +191,7 @@ def main(args):
         stats.results_for_param(taut)
         
     if args.summary_print != -1:
-        return stats.full_summary(args.summary_splits, args.summary_print)
+        return stats.full_summary(args.summary_splits, args.summary_print, args.r_window)
 
     return stats, true_net, know_net
 

@@ -23,9 +23,8 @@ def get_transitions_for_model(args):
 def populate_tracing_trans(trans_know, args):
     noncomp = args.noncomp
     presample = args.presample
-    # if no noncompliace rate is chosen, skip this transition
-    # Note: optional argument time can be passed to make the noncompliance rate time dependent
-    if noncomp:
+    # if no noncompliace rate is chosen or testing is completely disabled, skip this transition
+    if noncomp and args.taur:
         if args.noncomp_time:
             noncomp_func = get_stateful_exp_sampler( \
                 'expFactorTimesTimeDif', lamda=noncomp, presample=presample)

@@ -3,8 +3,8 @@ import numpy as np
 from sklearn.model_selection import ParameterGrid
 
 
-pa_vals = [.2, .5]
-tau_vals = np.array([.03, .05, .1, .2])
+pa_vals = [.2]
+tau_vals = np.array([.05, .1, .2, .5])
 GRID = [
     # When taut = 0, it does not matter the degree of overlap or uptake (so make them 1)
     {'uptake': [1],
