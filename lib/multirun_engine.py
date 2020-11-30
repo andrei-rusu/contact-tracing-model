@@ -152,10 +152,10 @@ class EngineDual(Engine):
         # Draw network if flag
         if args.draw:
             # we make plots for the true network + all the dual networks
-            fix, ax = plt.subplots(nrows=1, ncols=int(args.dual) + 1, figsize=(16, 5))
-            ax[0].set_title('True Network')
-            true_net.draw(seed=args.netseed, show=False, ax=ax[0])
-            ax[1].set_title('Tracing Networks')
+            fix, ax = plt.subplots(nrows=1, ncols=int(args.dual) + 1, figsize=(14, 5))
+            ax[0].set_title('True Network', fontsize=14)
+            true_net.draw(layout_type=args.draw_layout, seed=args.netseed, show=False, ax=ax[0])
+            ax[1].set_title('Tracing Networks', fontsize=14)
             know_net.draw(pos=true_net.pos, show=False, ax=ax[1:])
             plt.show()
 
@@ -173,7 +173,7 @@ class EngineDual(Engine):
             'nH' : 0,
             'totalInfected' : inf,
             'totalInfectious': inf,
-            'totalFalsePositive': 0,
+            'totalFalseNegative': 0,
             'totalTraced' : 0,
             'totalFalseTraced': 0,
             'totalExposedTraced': 0,
@@ -296,9 +296,9 @@ class EngineDual(Engine):
             elif e.to == 'D':
                 m['totalDeath'] += 1
             
-            # False Positives: Infectious but not Traced
+            # False Neg: Infectious but not Traced
             # infectious - traced_infectious = infectious - (traced - traced_false - traced_exposed)
-            m['totalFalsePositive'] = m['totalInfectious'] - (m['totalTraced'] - m['totalFalseTraced'] - m['totalExposedTraced'])
+            m['totalFalseNegative'] = m['totalInfectious'] - (m['totalTraced'] - m['totalFalseTraced'] - m['totalExposedTraced'])
             
             
             # if args.noncomp_after selected, nodes that have been isolating for longer than noncomp_after become automatically N
@@ -324,10 +324,10 @@ class EngineDual(Engine):
             # draw network at the end of each inner state if option selected
             if args.draw_iter:
                 print('State after events iteration ' + str(i) + ':')
-                fix, ax = plt.subplots(nrows=1, ncols=int(args.dual) + 1, figsize=(16, 5))
-                ax[0].set_title('True Network')
-                true_net.draw(seed=args.netseed, show=False, ax=ax[0])
-                ax[1].set_title('Tracing Networks')
+                fix, ax = plt.subplots(nrows=1, ncols=int(args.dual) + 1, figsize=(14, 5))
+                ax[0].set_title('True Network', fontsize=14)
+                true_net.draw(layout_type=args.draw_layout, seed=args.netseed, show=False, ax=ax[0])
+                ax[1].set_title('Tracing Networks', fontsize=14)
                 know_net.draw(pos=true_net.pos, show=False, ax=ax[1:])
                 plt.show()
                 sleep(1.5)
@@ -338,16 +338,18 @@ class EngineDual(Engine):
             # close simulation if there are no more possible events on the infection network
             if np.isin(true_net.node_states, END_STATES).all():
                 break
-
+                
                 
         if args.draw:
+            # Drawing positions are already initialized by this point
             print('Final state:')
-            fix, ax = plt.subplots(nrows=1, ncols=int(args.dual) + 1, figsize=(16, 5))
-            ax[0].set_title('True Network')
+            fix, ax = plt.subplots(nrows=1, ncols=int(args.dual) + 1, figsize=(14, 5))
+            ax[0].set_title('True Network', fontsize=14)
             true_net.draw(show=False, ax=ax[0])
-            ax[1].set_title('Tracing Networks')
+            ax[1].set_title('Tracing Networks', fontsize=14)
             know_net.draw(pos=true_net.pos, show=False, ax=ax[1:])
-            plt.show()               
+            plt.savefig('fig/network-' + str(true_net.inet) + '.png', bbox_inches = 'tight')
+#             plt.show()
 
         return result
 
@@ -358,15 +360,20 @@ class EngineOne(Engine):
         
         # local vars for efficiency
         args = self.args
+        noncomp_after = args.noncomp_after
+        taur = args.taur
         true_net = self.true_net
         trans = self.trans_true
         
         if args.draw:
             fix, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 5))
+            ax[0].set_title('Infection Progress', fontsize=14)
             true_net.is_dual = False
-            true_net.draw(seed=args.netseed, ax=ax[0])
+            true_net.draw(layout_type=args.draw_layout, seed=args.netseed, show=False, ax=ax[0])
+            ax[1].set_title('Tracing Progress', fontsize=14)
             true_net.is_dual = True
-            true_net.draw(ax=ax[1])
+            true_net.draw(show=False, ax=ax[1])
+            plt.show()
             
         # set the dual flag such that true_net can be interpreted as the tracing network
         true_net.is_dual = True
@@ -400,7 +407,7 @@ class EngineOne(Engine):
             'nH' : 0,
             'totalInfected' : inf,
             'totalInfectious': inf,
-            'totalFalsePositive': 0,
+            'totalFalseNegative': 0,
             'totalTraced' : 0,
             'totalFalseTraced': 0,
             'totalExposedTraced': 0,
@@ -408,8 +415,8 @@ class EngineOne(Engine):
             'totalRecovered' : 0,
             'totalHospital' : 0,
             'totalDeath' : 0,
-            'tracingEffortRandom' : -1,
-            'tracingEffortContact' : -1,
+            'tracingEffortRandom' : 0,
+            'tracingEffortContact' : [0],
         }
 
         # will hold up all results across time
@@ -512,42 +519,60 @@ class EngineOne(Engine):
             elif e.to == 'D':
                 m['totalDeath'] += 1
 
-                
-            # list of efforts and final state check for each tracing network (in this case only one)
-            efforts_and_check_end = true_net.check_end_config_and_compute_efforts(args.efforts)
-            # random (testing) effort will be the same for all dual networks - element 0 in the result list      
-            m['tracingEffortRandom'] = round(args.taur * efforts_and_check_end[0], 2)
-            # the contact tracing effort is DIFFERENT across the dual networks - element 1 in the result list
-            m['tracingEffortContact'] = round(self.tr_rate * efforts_and_check_end[1], 2)
-            # the flag to check for sim finish is also the same for all networks - last element in the result list
-            stop_simulation = efforts_and_check_end[-1]
-            
-            # False Positives: Infectious but not Traced
+            # False Neg: Infectious but not Traced
             # infectious - traced_infectious = infectious - (traced - traced_false - traced_exposed)
-            m['totalFalsePositive'] = m['totalInfectious'] - (m['totalTraced'] - m['totalFalseTraced'] - m['totalExposedTraced'])
-
-            # record metrics after event run for time e.time
-            m['time'] = e.time
-            result.append(StatsEvent(**m))
+            m['totalFalseNegative'] = m['totalInfectious'] - (m['totalTraced'] - m['totalFalseTraced'] - m['totalExposedTraced'])
+            
+            
+            # if args.noncomp_after selected, nodes that have been isolating for longer than noncomp_after become automatically N
+            current_time = e.time
+            
+            if noncomp_after:
+                node_traced = true_net.node_traced
+                traced_time = true_net.traced_time
+                for nid in true_net.node_list:
+                    if node_traced[nid] and (current_time - traced_time[nid] >= noncomp_after):
+                        true_net.change_traced_state_fast_update(nid, False, current_time)
+            
+            # if args.efforts selected, compute efforts for all tracing networks
+            if args.efforts:
+                # loop through nodes to collect list of tracing efforts FOR EACH tracing network
+                efforts_for_all = true_net.compute_efforts(taur)
+                # random (testing) effort is the first element (no dual networks here)    
+                m['tracingEffortRandom'] = efforts_for_all[0]
+                # the contact tracing effort is the first second (no dual networks here) 
+                m['tracingEffortContact'] = [efforts_for_all[1]]
+                
             
             if args.draw_iter:
                 print('State after events iteration ' + str(i) + ':')
                 fix, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 5))
+                ax[0].set_title('Infection Progress', fontsize=14)
                 true_net.is_dual = False
-                true_net.draw(seed=args.netseed, ax=ax[0])
+                true_net.draw(layout_type=args.draw_layout, seed=args.netseed, show=False, ax=ax[0])
+                ax[1].set_title('Tracing Progress', fontsize=14)
                 true_net.is_dual = True
-                true_net.draw(ax=ax[1])
+                true_net.draw(show=False, ax=ax[1])
+                plt.show()
+                sleep(1.5)
 
-            # close simulation if the only possible events remain T -> N -> T etc
-            if stop_simulation:
+                
+            # record metrics after event run for time current_time=e.time
+            m['time'] = current_time
+            result.append(StatsEvent(**m))
+            # close simulation if there are no more possible events on the infection network
+            if np.isin(true_net.node_states, END_STATES).all():
                 break
             
         if args.draw:
             print('Final state:')
             fix, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 5))
+            ax[0].set_title('Infection Progress', fontsize=14)
             true_net.is_dual = False
-            true_net.draw(ax=ax[0])
+            true_net.draw(show=False, ax=ax[0])
+            ax[1].set_title('Tracing Progress', fontsize=14)
             true_net.is_dual = True
-            true_net.draw(ax=ax[1])
+            true_net.draw(show=False, ax=ax[1])
+            plt.show()
             
         return result

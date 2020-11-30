@@ -40,7 +40,9 @@ PARAMETER_DEFAULTS = {
     'dual': 1, # 0 - tracing happens on same net as infection, 1 - one dual net for tracing, 2 - two dual nets for tracing
     'isolate_s': True, # whether or not Susceptible people are isolated (Note: they will not get infected unless noncompliant)
     'trace_once': False, # if True a node cannot become traced again after being noncompliant
-    'draw': False, 'draw_iter': False, 'seed': -1, 'netseed': -1,
+    'draw': False, 'draw_iter': False, # whether to draw at start/finish of simulation or at after each event
+    'draw_layout': 'spectral', # networkx drawing layout to use when drawing
+    'seed': -1, 'netseed': -1, # seed of infection and exponentials, and the seed for network initializations
     'summary_print': -1, # None -> full_summary never called; False -> no summary printing, True -> print summary as well
     'summary_splits': 1000, # how many time splits to use for the epidemic summary
     'r_window': 7, # number of days for Reff calculation

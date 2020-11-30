@@ -1,5 +1,5 @@
 import networkx as nx
-
+import inspect
 import itertools
 import random
 from copy import deepcopy
@@ -70,8 +70,8 @@ class Network(nx.Graph):
             'ws': lambda: list(nx.watts_strogatz_graph(n, k, p, seed=seed).edges),
             'neuman_ws': lambda: list(nx.newman_watts_strogatz_graph(n, k, p, seed=seed).edges),
             # scale-free network
-            'barabasi': lambda: list(nx.barabasi_albert_graph(n, m=k).edges),
-            'powerlaw-cluster': lambda: list(nx.powerlaw_cluster_graph(n, m=k, p=p).edges),
+            'barabasi': lambda: list(nx.barabasi_albert_graph(n, m=k, seed=seed).edges),
+            'powerlaw-cluster': lambda: list(nx.powerlaw_cluster_graph(n, m=k, p=p, seed=seed).edges),
             # fully connected network
             'complete': lambda: list(nx.complete_graph(n).edges),
         }
@@ -219,8 +219,24 @@ class Network(nx.Graph):
     def get_count(self, nid, state='I'):
         return self.node_counts[nid][state]
             
-    def generate_layout(self, seed=43):
-        self.pos = nx.spring_layout(self, seed=seed)
+    def generate_layout(self, layout_type='spring_layout', **kwargs):
+        # deals with the case in which the layout was not specified with the correct suffix
+        if not layout_type.endswith('layout'):
+            layout_type += '_layout'
+        # get the method from networkx which generates the selected layout
+        method_to_call = getattr(nx, layout_type)
+        # get signature of the method to make sure we pass in only the supported kwargs per each layout type
+        signature = inspect.signature(method_to_call)
+        # skip positional, *args and **kwargs arguments
+        skip_kinds = {inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD}
+        # loop through the method signature parameters and either put the value supplied by kwargs or retain the default value
+        passed_kwargs = {
+            param.name: kwargs[param.name]
+            for param in signature.parameters.values()
+            if param.name in kwargs and param.kind not in skip_kinds
+        }
+        # generate drawing layout as selected
+        self.pos = method_to_call(self, **passed_kwargs)
         
     def get_state(self, nid):
         return self.node_states[nid]
@@ -333,7 +349,7 @@ class Network(nx.Graph):
         return round(taur * randEffortAcum, 2), round(self.count_importance * tracingEffortAccum, 2)
     
         
-    def draw(self, pos=None, show=True, ax=None, seed=43):
+    def draw(self, pos=None, show=True, ax=None, layout_type='spring_layout', seed=43):
         # for the true network, colors for all nodes are based on their state
         if not self.is_dual:
             colors = list(map(lambda x: STATES_COLOR_MAP[x], self.node_states))
@@ -348,20 +364,24 @@ class Network(nx.Graph):
                     colors[nid] = STATES_COLOR_MAP['N']
                 else:
                     colors[nid] = STATES_COLOR_MAP[state]
+                    
+        # sometimes an iterable of axis may be supplied instead of one Axis object, so get the first element
+        if isinstance(ax, Iterable): ax = ax[0]
 
         # by doing this we avoid overwriting self.pos with pos when we just want a different layout for the drawing
         pos = pos if pos else self.pos
         # if both were None, generate a new layout with the seed and use it for drawing
         if not pos:
-            self.generate_layout(seed)
+            self.generate_layout(layout_type=layout_type, seed=seed)
             pos = self.pos
             
-        # sometimes an iterable of axis may be supplied instead of one Axis object, so get the first element
-        if isinstance(ax, Iterable): ax = ax[0]
         # draw graph
         nx.draw(self, pos=pos, node_color=colors, ax=ax, with_labels=True)
+        
+        plt.subplots_adjust(left=.1)
         # create color legend
-        plt.legend(handles=[mpatches.Patch(color=color, label=state) for state, color in STATES_COLOR_MAP.items()])
+        plt.legend(handles=[mpatches.Patch(color=color, label=state) for state, color in STATES_COLOR_MAP.items()], \
+                   loc='upper left', prop={'size': 12}, bbox_to_anchor=(0,1), bbox_transform=plt.gcf().transFigure)
         
         if show:
             plt.show()

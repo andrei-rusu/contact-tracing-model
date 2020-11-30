@@ -16,7 +16,6 @@ from contextlib import contextmanager
 from cProfile import Profile
 from pstats import Stats
 from collections import defaultdict
-from time import time
 
 from multiprocess.context import Process
 from multiprocess.pool import Pool
@@ -298,14 +297,6 @@ def pvar(*var, owners=True):
                 format_to_print = format_to_print[:-2]
             print(format_to_print.format(fi[i],x), end="", flush=True)
     print()
-    
-# times a function
-def timer(func, *args):
-    t0 = time()
-    func(*args)
-    t1 = time()
-
-    return t1-t0
             
             
 ### Pickle and JSON dump to file and retrieve functions
@@ -334,7 +325,7 @@ def get_json(json_or_path):
     try:
         return json.loads(json_or_path)
     except:
-        with open(json_or_path, 'r') as handle:
+        with open(json_or_path, 'r', encoding="utf8") as handle:
             return json.loads(handle.read())
         
 def process_json_results(path=None, print_id_fail=True):
@@ -358,7 +349,7 @@ def process_json_results(path=None, print_id_fail=True):
             taut = np.atleast_1d(args['taut'])[0]
             taur = args['taur']
             over = float(round(args['overlap'], 2))
-            uptake = float(round(args.get('uptake', 0.), 2))
+            uptake = float(round(args.get('uptake', 1.), 2))
             pa = args['pa']
             try:
                 # If only a single taut value present in running args, the results key is 'res'

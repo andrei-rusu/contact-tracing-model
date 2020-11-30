@@ -126,7 +126,7 @@ class StatsProcessor():
                     accumulator[8][j][ser_index] = last_idx.totalDeath
                     accumulator[9][j][ser_index] = last_idx.totalInfectious
                     accumulator[10][j][ser_index] = last_idx.totalFalseTraced
-                    accumulator[11][j][ser_index] = last_idx.totalFalsePositive
+                    accumulator[11][j][ser_index] = last_idx.totalFalseNegative
                     accumulator[12][j][ser_index] = last_idx.totalNonCompliant
 
                 
@@ -237,8 +237,8 @@ class StatsProcessor():
             current['average-total-false-traced'] = stats_for_timed_parameters[10]
             current['average-overall-false-traced'] = stats_for_timed_parameters[10][-1]
             
-            current['average-total-false-positive'] = stats_for_timed_parameters[11]
-            current['average-overall-false-positive'] = stats_for_timed_parameters[11][-1]
+            current['average-total-false-negative'] = stats_for_timed_parameters[11]
+            current['average-overall-false-negative'] = stats_for_timed_parameters[11][-1]
             
             current['average-total-noncompliant'] = stats_for_timed_parameters[12]
             current['average-overall-noncompliant'] = stats_for_timed_parameters[12][-1]
