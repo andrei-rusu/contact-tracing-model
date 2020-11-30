@@ -1,7 +1,9 @@
 # contact-tracing-model
 
-SEIR-T model: dual and triad network topologies for modeling the effects of "test and trace" strategies on the spread of COVID-19.
-Compartmental formulation that describes viral transmissions and contact tracing in terms of network-defined neighborhoods.
+SEIR-T model
+
+Dual and triad network topologies for modeling the effects of different "test and trace" strategies on the spread of COVID-19.
+SEIR-T uses a compartmental formulation that describes viral transmissions and contact tracing in terms of network-defined neighborhoods.
 
 Running example:
     python run.py \
