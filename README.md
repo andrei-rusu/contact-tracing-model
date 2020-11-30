@@ -6,6 +6,9 @@ Dual and triad network topologies for modeling the effects of different "test an
 
 SEIR-T uses a compartmental formulation that describes viral transmissions and contact tracing in terms of network-defined neighborhoods.
 
+Link to the corresponding paper which documents the model (Andrei et al., 2020): 
+https://sotonac-my.sharepoint.com/:b:/g/personal/ar5g15_soton_ac_uk/ESjnbcDA0thLtN4Hr68rCiIBE8q45dcCW_56rsjIavA0iQ?e=5ElCY2
+
 Running example:
     python run.py \
     --netsize 1000 \
