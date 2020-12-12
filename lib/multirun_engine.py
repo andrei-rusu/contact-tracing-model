@@ -12,7 +12,6 @@ from lib import network
 from lib.utils import tqdm_redirect, ListDelegator
 from lib.stats import StatsEvent
 
-END_STATES = ['S', 'R', 'D']
 
 # Classes used to perform Multiprocessing iterations
 
@@ -139,15 +138,24 @@ class EngineDual(Engine):
         args = self.args
         tr_rate = self.tr_rate
         presample = args.presample
+        samp_already_exp = (args.sampling_type == 'dir')
+        samp_min_only = (args.sampling_type == 'min')
         noncomp_after = args.noncomp_after
         taur = args.taur
         true_net = self.true_net
         # Note: know_net may be a ListDelegator of tracing networks
         know_net = self.know_net
+        # we need the tracing networks in this form to pass to get_next_event_sample_only_minimum
+        tracing_nets = [know_net] if args.dual == 1 else list(know_net)
+        # the transition objects
+        trans_true = self.trans_true
+        trans_know = self.trans_know
         
         # seed the random for this network id and iteration
         if args.seed is not None:
-            random.seed(args.seed + true_net.inet + itr)
+            seeder = args.seed + true_net.inet + itr
+            random.seed(seeder)
+            np.random.seed(seeder)
 
         # Draw network if flag
         if args.draw:
@@ -160,8 +168,10 @@ class EngineDual(Engine):
             plt.show()
 
         # simulation objects
-        sim_true = true_net.get_simulator(self.trans_true, isolate_S=args.isolate_s, trace_once=args.trace_once, presample=presample)
-        sim_know = know_net.get_simulator(self.trans_know, isolate_S=args.isolate_s, trace_once=args.trace_once, presample=presample)
+        sim_true = true_net.get_simulator(trans_true, isolate_S=args.isolate_s, trace_once=args.trace_once, \
+                                          already_exp=samp_already_exp, presample=presample)
+        sim_know = know_net.get_simulator(trans_know, isolate_S=args.isolate_s, trace_once=args.trace_once, \
+                                          already_exp=samp_already_exp, presample=presample)
         
         # number of initial infected
         inf = args.first_inf
@@ -192,22 +202,31 @@ class EngineDual(Engine):
         events_range = range(args.nevents) if args.nevents else count()
         for i in events_range:
             
-            e1 = sim_true.get_next_event()
-            
+            # this option enables T/N states to be separate from the infection states
             if args.separate_traced:
-                # get events on the known network ONLY IF a tracing rate actually exists
-                e2 = sim_know.get_next_trace_event() if taur else None
-
-                # If no more events left, break out of the loop
-                if e1 is None and e2 is None:
-                    break
                 
-                # get all event candidates, assign 'inf' to all Nones, and select the event with the smallest 'time' value
-                # Note: if 2 networks are used, e2 will be an array of 2 tracing events from each network
-                candidates = np.append(np.atleast_1d(e2), e1)
-                times = [e_candidate.time if e_candidate is not None else float('inf') for e_candidate in candidates]
-                e = candidates[np.argmin(times)]
-                                
+                # if samp_min_only then we only sample the minimum exponential Exp(sum(lamdas[i] for i in possible_transitions))
+                if samp_min_only:
+                    # we combine all possible lambdas from both infection and tracing networks (so we pass tracing-related objs here)
+                    e = sim_true.get_next_event_sample_only_minimum(trans_know, tracing_nets)
+
+                # otherwise, all exponentials are sampled as normal (either they are already exp or will be sampled later)
+                else:
+                    e1 = sim_true.get_next_event()
+                    # get events on the known network ONLY IF a random tracing rate actually exists
+                    e2 = sim_know.get_next_trace_event() if taur else None
+
+                    # If no more events left, break out of the loop
+                    if e1 is None and e2 is None:
+                        break
+
+                    # get all event candidates, assign 'inf' to all Nones, and select the event with the smallest 'time' value
+                    # Note: if 2 networks are used, e2 will be an array of 2 tracing events from each network
+                    candidates = np.append(np.atleast_1d(e2), e1)
+                    times = [e_candidate.time if e_candidate is not None else float('inf') for e_candidate in candidates]
+                    e = candidates[np.argmin(times)]
+
+                                                
                 # if the event chosen is a tracing event, separate logic follows (NOT updating event.FROM counts!)
                 if e.to == 'T':
                     # the update to total traced counts is done only once (ignore if same nid is traced again)
@@ -221,7 +240,7 @@ class EngineDual(Engine):
                     sim_know.run_trace_event(e, True)
                     
                 # Non-compliance with isolation event
-                elif e.fr == 'T':
+                elif e.to == 'N':
                     # the update to total noncompliant counts is done only once (ignore if same nid is noncompliant again)
                     if e.node not in true_net.noncomp_time:
                         m['totalNonCompliant'] += 1
@@ -244,7 +263,8 @@ class EngineDual(Engine):
                         m['nH'] -= 1
             
             else:
-                # get events on the known network ONLY IF a tracing rate actually exists
+                e1 = sim_true.get_next_event()
+                # get events on the known network ONLY IF a random tracing rate actually exists
                 e2 = sim_know.get_next_event() if taur else None
 
                 # If no more events left, break out of the loop
@@ -301,9 +321,8 @@ class EngineDual(Engine):
             m['totalFalseNegative'] = m['totalInfectious'] - (m['totalTraced'] - m['totalFalseTraced'] - m['totalExposedTraced'])
             
             
-            # if args.noncomp_after selected, nodes that have been isolating for longer than noncomp_after become automatically N
             current_time = e.time
-            
+            # if args.noncomp_after selected, nodes that have been isolating for longer than noncomp_after become automatically N
             if noncomp_after:
                 node_traced = true_net.node_traced
                 traced_time = true_net.traced_time
@@ -336,7 +355,7 @@ class EngineDual(Engine):
             m['time'] = current_time
             result.append(StatsEvent(**m))
             # close simulation if there are no more possible events on the infection network
-            if np.isin(true_net.node_states, END_STATES).all():
+            if not m['nE'] + m['nI'] + m['nH']:
                 break
                 
                 
@@ -348,8 +367,8 @@ class EngineDual(Engine):
             true_net.draw(show=False, ax=ax[0])
             ax[1].set_title('Tracing Networks', fontsize=14)
             know_net.draw(pos=true_net.pos, show=False, ax=ax[1:])
-            plt.savefig('fig/network-' + str(true_net.inet) + '.png', bbox_inches = 'tight')
-#             plt.show()
+#             plt.savefig('fig/network-' + str(true_net.inet) + '.png', bbox_inches = 'tight')
+            plt.show()
 
         return result
 
@@ -380,7 +399,9 @@ class EngineOne(Engine):
             
         # seed the random for this network id and iteration
         if args.seed is not None:
-            random.seed(args.seed + true_net.inet + itr)
+            seeder = args.seed + true_net.inet + itr
+            random.seed(seeder)
+            np.random.seed(seeder)
         
         # in the case of separate_traced, mimic dual simulation objects as if dual net was run (sim_true + sim_know)
         if args.separate_traced:
@@ -455,7 +476,7 @@ class EngineOne(Engine):
                     sim_true.run_trace_event(e, True)
                     
                 # Non-compliance with isolation event
-                elif e.fr == 'T':
+                elif e.to == 'N':
                     # the update to total noncompliant counts is done only once (ignore if same nid is noncompliant again)
                     if e.node not in true_net.noncomp_time:
                         m['totalNonCompliant'] += 1
@@ -561,7 +582,7 @@ class EngineOne(Engine):
             m['time'] = current_time
             result.append(StatsEvent(**m))
             # close simulation if there are no more possible events on the infection network
-            if np.isin(true_net.node_states, END_STATES).all():
+            if not m['nE'] + m['nI'] + m['nH']:
                 break
             
         if args.draw:

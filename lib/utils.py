@@ -70,16 +70,16 @@ def rand_pairs_excluding(n, m, to_exclude, seed=None):
     return pairs - to_exclude
 
 
-def get_stateless_exp_sampler(lamda, presample=0):
-    if presample:
+def get_stateless_sampling_func(lamda, exp=True, presample=0):
+    if not exp:
         return (lambda net, nid, time=None: lamda)
     return (lambda net, nid, time=None: (-math.log(1. - random.random()) / lamda))
 
-def get_stateful_exp_sampler(sampler_type='expFactorTimesCountMultiState', *args, presample=0, **kwargs):
-    if presample: 
+def get_stateful_sampling_func(sampler_type='expFactorTimesCountMultiState', exp=True, presample=0, **kwargs):
+    if not exp: 
         sampler_type += '_rate'
     func = globals()[sampler_type]
-    return (lambda net, nid, time=None: func(net, nid, *args, current_time=time, **kwargs))
+    return (lambda net, nid, time=None: func(net, nid, current_time=time, **kwargs))
 
 
 def expFactorTimesCount(net, nid, state='I', lamda=1, **kwargs):

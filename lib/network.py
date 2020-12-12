@@ -30,8 +30,8 @@ STATES_COLOR_MAP = {
 
 class Network(nx.Graph):
     
-    def get_simulator(self, trans, isolate_S=True, trace_once=False, presample=0):
-        return Simulation(self, trans, isolate_S, trace_once, presample)
+    def get_simulator(self, *args, **kwargs):
+        return Simulation(self, *args, **kwargs)
     
     def __init__(self, **kwds):
         # initialize the network id to 0
@@ -59,7 +59,7 @@ class Network(nx.Graph):
     def init_random(self, n=200, k=10, typ='random', p=.1, weighted=False, seed=None):
         # add n nodes to the network in the start state -> S
         self.add_mult(n, 'S')
-        # initialize the rewire probability to k/n if no p provided
+        # initialize the rewire probability to k/n if p=None provided
         p = k / n if p is None else p
         
         links_to_create_dict = {
@@ -68,7 +68,7 @@ class Network(nx.Graph):
             'binomial': lambda: list(nx.fast_gnp_random_graph(n, p, seed=seed).edges),
             # small-world network
             'ws': lambda: list(nx.watts_strogatz_graph(n, k, p, seed=seed).edges),
-            'neuman_ws': lambda: list(nx.newman_watts_strogatz_graph(n, k, p, seed=seed).edges),
+            'newman-ws': lambda: list(nx.newman_watts_strogatz_graph(n, k, p, seed=seed).edges),
             # scale-free network
             'barabasi': lambda: list(nx.barabasi_albert_graph(n, m=k, seed=seed).edges),
             'powerlaw-cluster': lambda: list(nx.powerlaw_cluster_graph(n, m=k, p=p, seed=seed).edges),
@@ -221,7 +221,7 @@ class Network(nx.Graph):
             
     def generate_layout(self, layout_type='spring_layout', **kwargs):
         # deals with the case in which the layout was not specified with the correct suffix
-        if not layout_type.endswith('layout'):
+        if not layout_type.endswith('_layout'):
             layout_type += '_layout'
         # get the method from networkx which generates the selected layout
         method_to_call = getattr(nx, layout_type)
@@ -349,7 +349,7 @@ class Network(nx.Graph):
         return round(taur * randEffortAcum, 2), round(self.count_importance * tracingEffortAccum, 2)
     
         
-    def draw(self, pos=None, show=True, ax=None, layout_type='spring_layout', seed=43):
+    def draw(self, pos=None, show=True, ax=None, layout_type='spring_layout', seed=43, legend=True):
         # for the true network, colors for all nodes are based on their state
         if not self.is_dual:
             colors = list(map(lambda x: STATES_COLOR_MAP[x], self.node_states))
@@ -378,10 +378,11 @@ class Network(nx.Graph):
         # draw graph
         nx.draw(self, pos=pos, node_color=colors, ax=ax, with_labels=True)
         
-        plt.subplots_adjust(left=.1)
-        # create color legend
-        plt.legend(handles=[mpatches.Patch(color=color, label=state) for state, color in STATES_COLOR_MAP.items()], \
-                   loc='upper left', prop={'size': 12}, bbox_to_anchor=(0,1), bbox_transform=plt.gcf().transFigure)
+        if legend:
+            plt.subplots_adjust(left=.1)
+            # create color legend
+            plt.legend(handles=[mpatches.Patch(color=color, label=state) for state, color in STATES_COLOR_MAP.items()], \
+                       loc='upper left', prop={'size': 12}, bbox_to_anchor=(0,1), bbox_transform=plt.gcf().transFigure)
         
         if show:
             plt.show()

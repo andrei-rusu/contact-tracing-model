@@ -1,18 +1,27 @@
 import numpy as np
+from random import random
+from math import log
 
-class ExpSampler(dict):
+class ExpSampler():
+    
+    def get_next_sample(self, lamda):
+        return -log(1. - random()) / lamda
+
+class ExpSamplerPresample(dict):
     
     def __init__(self, size=1000):
         self.size = int(size)
             
     def get_next_sample(self, lamda):
         try:
-            return next(self[lamda])
+            sample = next(self[lamda])
         except (KeyError, StopIteration):
             self[lamda] = iter(np.random.exponential(1/lamda, self.size))
-            return next(self[lamda])
+            sample = next(self[lamda])
+        finally:
+            return sample
         
-class ExpSamplerScaleOne():
+class ExpSamplerPresampleScaleOne():
     
     def __init__(self, size=1000):
         self.size = int(size)
@@ -21,14 +30,19 @@ class ExpSamplerScaleOne():
             
     def get_next_sample(self, lamda):
         try:
-            return (1 / lamda) * next(self.iter)
+            sample = next(self.iter)
         except StopIteration:
             self.iter = iter(np.random.exponential(1, self.size))
-            return next(self.iter)
+            sample = next(self.iter)
+        finally:
+            return (1 / lamda) * sample
         
         
-def get_sampler(size=1000, scale_one=False):
-    if scale_one:
-        return ExpSamplerScaleOne(size)
+def get_sampler(presample_size=1000, scale_one=False):
+    if presample_size:
+        if scale_one:
+            return ExpSamplerPresampleScaleOne(presample_size)
+        else:
+            return ExpSamplerPresample(presample_size)
     else:
-        return ExpSampler(size)
+        return ExpSampler()

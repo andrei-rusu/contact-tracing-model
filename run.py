@@ -25,7 +25,8 @@ PARAMETER_DEFAULTS = {
     'spontan': False, # allow spontaneus recovery (for SIR and SEIR only, Covid uses this by default)
     'gammatau': 0, # recovery rate for traced people (if 0, global gamma is used)
     'taur': 0.1, 'taut': 0.1, # random tracing (testing) + contract-tracing rate which will be multiplied with no of traced contacts
-    'taut_two': 0.1, # contract-tracing rate for the second tracing network (if exists)
+    'taut_two': -1., # contract-tracing rate for the second tracing network (if exists)
+    'delay_two': 2., # number of days of delay on second network
     'noncomp': .02, # noncompliance rate (default: each day the chance of going out of isolation increases by 2%)
     'noncomp_time': True, # whether the noncomp rate will be multiplied by time difference t_current - t_trace
     'noncomp_after': 0, # period after which T becomes automatically N (nonisolating); 0 means disabled; 14 is standard quarantine
@@ -33,7 +34,7 @@ PARAMETER_DEFAULTS = {
     'nettype': 'random', 'p': .05, # network wiring type and a rewire prob for various graph types
     'overlap': .8, 'overlap_two': .4, # overlaps for dual nets (second is used only if dual == 2)
     'zadd': 0, 'zrem': 5, # if no overlap given, these values are used for z_add and z_rem; z_add also informs overlap of additions
-    'zadd_two': 0, 'zrem_two': 5, # these are used only if dual == 2 and no overlap_manual is given
+    'zadd_two': 0, 'zrem_two': 5, # these are used only if dual == 2 and no overlap_two is given
     'uptake': 1., 'maintain_overlap': True, 
     'nnets': 1, 'niters': 1, 'nevents': 0, # running number of nets, iterations per net and events (if 0, until no more events)
     'multip': 1, # 0 - no multiprocess, 1 - multiprocess nets, 2 - multiprocess iters, 3 - multiprocess nets and iters (half-half cpus)
@@ -51,9 +52,15 @@ PARAMETER_DEFAULTS = {
     'first_inf': 1., # number of nodes infected at the start of sim
     'rem_orphans': False, # whether or not to remove orphans from the infection network (they will not move state)
     'presample': 0, # number of stateless exponential presamples (if 0, no presampling)
-    'earlystop_margin': 0,
+    'earlystop_margin': 0, # first_inf + earlystop_margin determines if a simulation is regarded as early stopped
     'avg_without_earlystop': False, # whether alternative averages which have no early stopped iterations are to be computed
-    'efforts': False,
+    'efforts': False, # wehther efforts are to be computed
+    
+    # dir: the exponential is sampled DIRECTLY from the function registered on the transition object
+    # each: the transition obj registers only the lambda rates, the exponential is sampled FOR EACH lambda with exp_sampler.py
+    # min: the transition obj registers only the lambda rates, ONLY the MINIMUM exponential is sampled according to sum of lambdas
+    'sampling_type': 'dir',
+    
     # COVID model specific parameters:
     'pa': 0.2, # probability of being asymptomatic (could also be 0.5)
     'rel_beta': .5, # relative infectiousness of Ip/Ia compared to Is (Imperial paper + Medrxiv paper)
@@ -100,8 +107,11 @@ def main(args):
     if not np.isscalar(args.lamdahr): args.lamdahr = args.lamdahr[args.group]
     if not np.isscalar(args.lamdahd): args.lamdahd = args.lamdahd[args.group]
 
+    # if exp, then the transition dictionaries will hold functions which also compute the exponentials
+    # otherwise, the functionals will only compute the base rates
+    exp = (args.sampling_type == 'dir')
     # Transition dictionaries for each network will be populated based on args.model {state->list(state, trans_func)}
-    trans_true_items, trans_know_items = get_transitions_for_model(args)
+    trans_true_items, trans_know_items = get_transitions_for_model(args, exp)
 
     # populate these variables only if returns_last_net = True
     true_net = know_net = None
@@ -124,20 +134,22 @@ def main(args):
         
         # a random tracing rate is needed before any tracing can happen
         if taur > 0:
+            # if no explicit taut_two is set, taut_two = 1 / [ 1/taut (days) + delay (days) ]
+            if args.taut_two == -1: args.taut_two = 1 / (1 / taut + args.delay_two)
             # Tracing for 'S', 'E' happens over know_net depending only on the traced neighbor count of nid (no testing possible)
             # if no contact tracing rate then this transition will not be possible
-            tr_func = ut.get_stateful_exp_sampler(
-                       'expFactorTimesCountImportance', state='T', presample=presample) if taut else None
+            tr_func = ut.get_stateful_sampling_func(
+                       'expFactorTimesCountImportance', exp=exp, state='T', presample=presample) if taut else None
             add_trans(trans_know_items, 'S', 'T', tr_func)
             add_trans(trans_know_items, 'E', 'T', tr_func)
 
             # Test and trace functions
             # Tracing for I states which can be found via testing also depend on a random testing rate: args.taur
-            tr_and_test_func = ut.get_stateful_exp_sampler(
-                       'expFactorTimesCountImportance', state='T', base=taur, presample=presample)
+            tr_and_test_func = ut.get_stateful_sampling_func(
+                       'expFactorTimesCountImportance', exp=exp, state='T', base=taur, presample=presample)
             # For certain states, random tracing is done at a smaller rate (Ia vs Is)
-            tr_and_test_rel_func = ut.get_stateful_exp_sampler(
-                       'expFactorTimesCountImportance', state='T', base=(taur*rel_taur), presample=presample)
+            tr_and_test_rel_func = ut.get_stateful_sampling_func(
+                       'expFactorTimesCountImportance', exp=exp, state='T', base=(taur*rel_taur), presample=presample)
 
             # Update transition parameters based on the abvoe defined tracing functions
             if is_covid:
