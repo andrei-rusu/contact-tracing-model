@@ -113,10 +113,10 @@ class Simulation():
             # check if there is any tracing function instantiated before collecting non-traced points
             # Note: tracing multiple times can be disallowed through trace_once
             if trace_funcs and not node_traced[nid] and (not trace_once or not nid in traced_time) \
-            and node_states[nid] in traceable_states:
+            and node_states[nid] in trace_funcs:
                 not_traced_inf.append(nid)
             # check if there is a noncompliance rate func before collecting the traced points that are actually "dangerous"
-            elif noncompliance_rate_func and node_traced[nid] and node_states[nid] in traceable_states:
+            elif noncompliance_rate_func and node_traced[nid] and node_states[nid] in trace_funcs:
                 traced_inf.append(nid)
                 
         
@@ -210,12 +210,12 @@ class Simulation():
             
             # check if there is any possible tracing before updating the tracing possible transitions lists
             if trace_funcs and not current_traced and (not trace_once or not nid in traced_time) \
-            and current_state in traceable_states:
+            and current_state in trace_funcs:
                 for trace_net in tracing_nets:
                     lamdas[nid].append((trace_funcs[current_state](trace_net, nid), traced_state))
                 
             # check if there is a noncompliance rate func before collecting the possible noncompliant transitions lists
-            elif noncompliance_rate_func and current_traced and current_state in traceable_states:
+            elif noncompliance_rate_func and current_traced and current_state in trace_funcs:
                 for trace_net in tracing_nets:
                     lamdas[nid].append((noncompliance_rate_func(trace_net, nid, time), noncompliant_state))
         

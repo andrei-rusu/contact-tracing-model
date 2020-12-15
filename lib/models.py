@@ -22,72 +22,68 @@ def get_transitions_for_model(args, exp):
 
 def populate_tracing_trans(trans_know, args, exp):
     noncomp = args.noncomp
-    presample = args.presample
     # if no noncompliace rate is chosen or testing is completely disabled, skip this transition
     if noncomp and args.taur:
         if args.noncomp_time:
             noncomp_func = get_stateful_sampling_func( \
-                'expFactorTimesTimeDif', lamda=noncomp, exp=exp, presample=presample)
+                'expFactorTimesTimeDif', lamda=noncomp, exp=exp)
         else:
-            noncomp_func = get_stateless_sampling_func(noncomp, exp, presample)
+            noncomp_func = get_stateless_sampling_func(noncomp, exp)
         add_trans(trans_know, 'T', 'N', noncomp_func)    
     
 def sir(trans_true, args, exp):
     # local vars for efficiency
     beta = args.beta
-    presample = args.presample
     # add infection rate
     add_trans(trans_true, 'S', 'I', get_stateful_sampling_func('expFactorTimesCount', exp=exp, state='I', lamda=beta))
     
     if args.spontan:
         # allow spontaneuous recovery (without tracing) with rate gamma
-        add_trans(trans_true, 'I', 'R', get_stateless_sampling_func(args.gamma, exp, presample))
+        add_trans(trans_true, 'I', 'R', get_stateless_sampling_func(args.gamma, exp))
     
 def seir(trans_true, trans_know, args, exp):
     # local vars for efficiency
     beta = args.beta
-    presample = args.presample
     # Infections spread based on true_net connections depending on nid
     add_trans(trans_true, 'S', 'E', get_stateful_sampling_func('expFactorTimesCount', exp=exp, state='I', lamda=beta))
 
     # Next transition is network independent (at rate eps) but we keep the same API for sampling at get_next_event time
-    add_trans(trans_true, 'E', 'I', get_stateless_sampling_func(args.eps, exp, presample))
+    add_trans(trans_true, 'E', 'I', get_stateless_sampling_func(args.eps, exp))
     
     if args.spontan:
         # allow spontaneuous recovery (without tracing) with rate gamma
-        add_trans(trans_true, 'I', 'R', get_stateless_sampling_func(args.gamma, exp, presample))    
+        add_trans(trans_true, 'I', 'R', get_stateless_sampling_func(args.gamma, exp))    
     
 def covid(trans_true, args, exp):
     # local vars for efficiency
     beta = args.beta
     rel_beta = args.rel_beta
-    presample = args.presample
     # Infections spread based on true_net connections depending on nid
     add_trans(trans_true, 'S', 'E', get_stateful_sampling_func(
-              'expFactorTimesCountMultiState', states=['Is'], lamda=beta, exp=exp, presample=presample, 
+              'expFactorTimesCountMultiState', states=['Is'], lamda=beta, exp=exp, 
                                             rel_states=['I', 'Ia'], rel=rel_beta))
     
     # Transition to presymp with latency epsilon (we denote I = Ip !!!)
-    add_trans(trans_true, 'E', 'I', get_stateless_sampling_func(args.eps, exp, presample))
+    add_trans(trans_true, 'E', 'I', get_stateless_sampling_func(args.eps, exp))
     
     # Transisitons from prodromal state I are based on (probability of being asymp x duration of prodromal phase)
     asymp_dur = args.miup * args.pa
     symp_dur = args.miup * (1 - args.pa)
-    add_trans(trans_true, 'I', 'Ia', get_stateless_sampling_func(asymp_dur, exp, presample))
-    add_trans(trans_true, 'I', 'Is', get_stateless_sampling_func(symp_dur, exp, presample))
+    add_trans(trans_true, 'I', 'Ia', get_stateless_sampling_func(asymp_dur, exp))
+    add_trans(trans_true, 'I', 'Is', get_stateless_sampling_func(symp_dur, exp))
     
     # Asymptomatics can only transition to recovered with duration rate gamma
-    add_trans(trans_true, 'Ia', 'R', get_stateless_sampling_func(args.gamma, exp, presample))
+    add_trans(trans_true, 'Ia', 'R', get_stateless_sampling_func(args.gamma, exp))
     
     # Symptomatics can transition to either recovered or hospitalized based on duration gamma and probability ph (Age-group dependent!)
     hosp_rec = args.gamma * args.ph
     hosp_ded = args.gamma * (1 - args.ph)
-    add_trans(trans_true, 'Is', 'R', get_stateless_sampling_func(hosp_rec, exp, presample))
-    add_trans(trans_true, 'Is', 'H', get_stateless_sampling_func(hosp_ded, exp, presample))
+    add_trans(trans_true, 'Is', 'R', get_stateless_sampling_func(hosp_rec, exp))
+    add_trans(trans_true, 'Is', 'H', get_stateless_sampling_func(hosp_ded, exp))
     
     # Transitions from hospitalized to R or D are based on measurements in Ile-de-France (Age-group dependent!)
-    add_trans(trans_true, 'H', 'R', get_stateless_sampling_func(args.lamdahr, exp, presample))
-    add_trans(trans_true, 'H', 'D', get_stateless_sampling_func(args.lamdahd, exp, presample))
+    add_trans(trans_true, 'H', 'R', get_stateless_sampling_func(args.lamdahr, exp))
+    add_trans(trans_true, 'H', 'D', get_stateless_sampling_func(args.lamdahd, exp))
     
 
 def add_trans(trans, fr, to, func_or_rate):

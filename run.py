@@ -120,6 +120,8 @@ def main(args):
     taur = args.taur
     rel_taur = args.rel_taur
     presample = args.presample
+    # if no taut_two set, delay_two will be used together with all the given taut rates to compute the taut_two rates 
+    set_taut_two = (args.taut_two < 0)
     # we can simulate with a range of tracing rates or with a single one, depending on args.taut supplied
     tracing_rates = np.atleast_1d(args.taut)
     for taut in tracing_rates:
@@ -135,21 +137,22 @@ def main(args):
         # a random tracing rate is needed before any tracing can happen
         if taur > 0:
             # if no explicit taut_two is set, taut_two = 1 / [ 1/taut (days) + delay (days) ]
-            if args.taut_two == -1: args.taut_two = 1 / (1 / taut + args.delay_two)
+            if set_taut_two: 
+                args.taut_two = (1 / (1 / taut + args.delay_two) if taut != 0 else 0)
             # Tracing for 'S', 'E' happens over know_net depending only on the traced neighbor count of nid (no testing possible)
             # if no contact tracing rate then this transition will not be possible
             tr_func = ut.get_stateful_sampling_func(
-                       'expFactorTimesCountImportance', exp=exp, state='T', presample=presample) if taut else None
+                       'expFactorTimesCountImportance', exp=exp, state='T') if (taut or args.taut_two) else None
             add_trans(trans_know_items, 'S', 'T', tr_func)
             add_trans(trans_know_items, 'E', 'T', tr_func)
 
             # Test and trace functions
             # Tracing for I states which can be found via testing also depend on a random testing rate: args.taur
             tr_and_test_func = ut.get_stateful_sampling_func(
-                       'expFactorTimesCountImportance', exp=exp, state='T', base=taur, presample=presample)
+                       'expFactorTimesCountImportance', exp=exp, state='T', base=taur)
             # For certain states, random tracing is done at a smaller rate (Ia vs Is)
             tr_and_test_rel_func = ut.get_stateful_sampling_func(
-                       'expFactorTimesCountImportance', exp=exp, state='T', base=(taur*rel_taur), presample=presample)
+                       'expFactorTimesCountImportance', exp=exp, state='T', base=(taur*rel_taur))
 
             # Update transition parameters based on the abvoe defined tracing functions
             if is_covid:
@@ -166,7 +169,7 @@ def main(args):
         # if the tracing events are not separate from the infection events, then allow for traced individuals to get Removed
         if not args.separate_traced:
             # Recovery for traced nodes is network independent at rate gammatau
-            add_trans(trans_know, 'T', 'R', get_stateless_exp_sampler(args.gammatau, presample))
+            add_trans(trans_know, 'T', 'R', get_stateless_exp_sampler(args.gammatau, exp))
         
         
         nnets = args.nnets
@@ -233,9 +236,12 @@ if __name__ == '__main__':
     
     for k in PARAMETER_DEFAULTS.keys():
         default = PARAMETER_DEFAULTS[k]
-        # The following is needed since weirdly bool('False') = True in Python
-        typed = type(default) if type(default) != bool else lambda arg: arg.lower() in ("yes", "true", "t", "1")
-        argparser.add_argument('--' + k, type=typed, default=default)
+        if k == 'taut':
+            argparser.add_argument('--' + k, type=float, nargs="+", default=default)
+        else:
+            # The following is needed since weirdly bool('False') = True in Python
+            typed = type(default) if type(default) != bool else lambda arg: arg.lower() in ("yes", "true", "t", "1")
+            argparser.add_argument('--' + k, type=typed, default=default)
 
     args = argparser.parse_args()
     args.summary_print = 1 # If script run, full_summary in print mode will always be called

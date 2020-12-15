@@ -50,7 +50,7 @@ python run.py \
     --netsize 100 \
     --k $k \
     --p .2 \
-    --typ "powerlaw-cluster"
+    --nettype "powerlaw-cluster" \
     --multip 3 \
     --model "covid" \
     --dual $dual \
@@ -70,7 +70,7 @@ python run.py \
     --noncomp_after 14 \
     --presample 100000 \
     --pa $pa \
-    --taut $taut \
+    --taut ${taut[@]} \
     --delay_two 2. \
     --taur $taur \
     --sampling_type "min" \

@@ -70,12 +70,12 @@ def rand_pairs_excluding(n, m, to_exclude, seed=None):
     return pairs - to_exclude
 
 
-def get_stateless_sampling_func(lamda, exp=True, presample=0):
+def get_stateless_sampling_func(lamda, exp=True):
     if not exp:
         return (lambda net, nid, time=None: lamda)
     return (lambda net, nid, time=None: (-math.log(1. - random.random()) / lamda))
 
-def get_stateful_sampling_func(sampler_type='expFactorTimesCountMultiState', exp=True, presample=0, **kwargs):
+def get_stateful_sampling_func(sampler_type='expFactorTimesCountMultiState', exp=True, **kwargs):
     if not exp: 
         sampler_type += '_rate'
     func = globals()[sampler_type]
