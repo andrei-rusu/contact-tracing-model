@@ -53,11 +53,9 @@ class StatsProcessor():
             infectious_time_rate = args.gamma
             initial_inf_rate = args.beta
             
-        # basic R0 is scaled by the average number of contacts (since the transmission rate is also scaled)
         contacts_scaler = args.netsize if args.nettype == 'complete' else args.k
+        # basic R0 is scaled by the average number of contacts (since the transmission rate is also scaled)
         summary['args']['r0'] = contacts_scaler * args.beta / infectious_time_rate
-        # also keep track of the initial R0 for the simulation i.e. for the first infected (all are Ip at start)
-        summary['args']['r0-first'] = args.first_inf * initial_inf_rate / infectious_time_rate
         
         if args.dual:
             # If dual=True, true overlap is EITHER the inputted overlap OR (k-zrem)/(k-zadd)

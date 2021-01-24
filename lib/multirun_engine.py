@@ -1,6 +1,7 @@
 import random
 import numpy as np
 import matplotlib.pyplot as plt
+from IPython import display
 
 from time import sleep
 from itertools import count
@@ -136,8 +137,10 @@ class EngineDual(Engine):
         
         # local vars for efficiency
         args = self.args
+        dual = args.dual
         tr_rate = self.tr_rate
         presample = args.presample
+        separate_traced = args.separate_traced
         samp_already_exp = (args.sampling_type == 'dir')
         samp_min_only = (args.sampling_type == 'min')
         noncomp_after = args.noncomp_after
@@ -146,7 +149,7 @@ class EngineDual(Engine):
         # Note: know_net may be a ListDelegator of tracing networks
         know_net = self.know_net
         # we need the tracing networks in this form to pass to get_next_event_sample_only_minimum
-        tracing_nets = [know_net] if args.dual == 1 else list(know_net)
+        tracing_nets = [know_net] if dual == 1 else list(know_net)
         # the transition objects
         trans_true = self.trans_true
         trans_know = self.trans_know
@@ -156,16 +159,26 @@ class EngineDual(Engine):
             seeder = args.seed + true_net.inet + itr
             random.seed(seeder)
             np.random.seed(seeder)
+            
+        # drawing vars
+        draw = args.draw
+        draw_iter = args.draw_iter
+        animate = args.animate
+        
+        # If either of the drawing flag is enabled, instantiate drawing figure and axes, and draw initial state
+        if draw or draw_iter:
+            fig, ax = plt.subplots(nrows=1, ncols=int(dual) + 1, figsize=(14, 5))
 
-        # Draw network if flag
-        if args.draw:
             # we make plots for the true network + all the dual networks
-            fix, ax = plt.subplots(nrows=1, ncols=int(args.dual) + 1, figsize=(14, 5))
             ax[0].set_title('True Network', fontsize=14)
             true_net.draw(layout_type=args.draw_layout, seed=args.netseed, show=False, ax=ax[0])
-            ax[1].set_title('Tracing Networks', fontsize=14)
-            know_net.draw(pos=true_net.pos, show=False, ax=ax[1:])
-            plt.show()
+            ax[1].set_title('Digital Tracing Network', fontsize=14)
+            if dual == 2:
+                ax[-1].set_title('Manual Tracing Network', fontsize=14)
+            know_net.draw(pos=true_net.pos, show=False, ax=ax[1:], full_name=args.draw_fullname, model=args.model)
+            display.display(plt.gcf())
+            if animate:
+                display.clear_output(wait=True)
 
         # simulation objects
         sim_true = true_net.get_simulator(trans_true, isolate_S=args.isolate_s, trace_once=args.trace_once, \
@@ -203,11 +216,11 @@ class EngineDual(Engine):
         for i in events_range:
             
             # this option enables T/N states to be separate from the infection states
-            if args.separate_traced:
+            if separate_traced:
                 
                 # if samp_min_only then we only sample the minimum exponential Exp(sum(lamdas[i] for i in possible_transitions))
                 if samp_min_only:
-                    # we combine all possible lambdas from both infection and tracing networks (so we pass tracing-related objs here)
+                    # we combine all possible lambdas from both infection and tracing networks (so pass tracing-related objs here)
                     e = sim_true.get_next_event_sample_only_minimum(trans_know, tracing_nets)
 
                 # otherwise, all exponentials are sampled as normal (either they are already exp or will be sampled later)
@@ -228,7 +241,9 @@ class EngineDual(Engine):
 
                                                 
                 # if the event chosen is a tracing event, separate logic follows (NOT updating event.FROM counts!)
-                if e.to == 'T':
+                is_trace_event = (e.to == 'T')
+                # exception: if trace_h selected, the node will be counted as traced if going to H (but will never become noncompliant)
+                if is_trace_event or (args.trace_h and e.to == 'H'):
                     # the update to total traced counts is done only once (ignore if same nid is traced again)
                     if e.node not in true_net.traced_time:
                         m['totalTraced'] += 1
@@ -240,7 +255,7 @@ class EngineDual(Engine):
                     sim_know.run_trace_event(e, True)
                     
                 # Non-compliance with isolation event
-                elif e.to == 'N':
+                if e.to == 'N':
                     # the update to total noncompliant counts is done only once (ignore if same nid is noncompliant again)
                     if e.node not in true_net.noncomp_time:
                         m['totalNonCompliant'] += 1
@@ -248,8 +263,8 @@ class EngineDual(Engine):
                     sim_true.run_trace_event(e, False)
                     sim_know.run_trace_event(e, False)
                     
-                # otherwise, normal logic follows (with update counts on infection network only)
-                else:
+                # otherwise, normal logic follows if NOT e.to=T event (with update counts on infection network only)
+                elif not is_trace_event:
                     sim_true.run_event(e)
                     sim_know.run_event_no_update(e)
                     # Update event.FROM counts:
@@ -291,7 +306,7 @@ class EngineDual(Engine):
                     
                 # Update 'T' counts if a tracing event was chosen
                 # Note that this could double count if T -> N -> T multiple times
-                if e.to == 'T':
+                if e.to == 'T' or (args.trace_h and e.to == 'H'):
                     m['totalTraced'] += 1
                     # if S -> T then a person has been incorrectly traced
                     if e.fr == 'S': m['totalFalseTraced'] += 1
@@ -325,11 +340,15 @@ class EngineDual(Engine):
             # if args.noncomp_after selected, nodes that have been isolating for longer than noncomp_after become automatically N
             if noncomp_after:
                 node_traced = true_net.node_traced
+                node_states = true_net.node_states
                 traced_time = true_net.traced_time
+                blocked_states = ['H', 'D']
                 for nid in true_net.node_list:
-                    if node_traced[nid] and (current_time - traced_time[nid] >= noncomp_after):
-                        true_net.change_traced_state_fast_update(nid, False, current_time)
-                        know_net.change_traced_state_fast_update(nid, False, current_time)
+                    if node_traced[nid] and node_states[nid] not in blocked_states \
+                    and (current_time - traced_time[nid] >= noncomp_after):
+                        event = sim_true.get_event_with_config(node=nid, fr='T', to='N', time=current_time)
+                        sim_true.run_trace_event(event, False)
+                        sim_know.run_trace_event(event, False)                          
             
             # if args.efforts selected, compute efforts for all tracing networks
             if args.efforts:
@@ -341,15 +360,21 @@ class EngineDual(Engine):
                 m['tracingEffortContact'] = efforts_for_all[:, 1]
             
             # draw network at the end of each inner state if option selected
-            if args.draw_iter:
+            if draw_iter:
                 print('State after events iteration ' + str(i) + ':')
-                fix, ax = plt.subplots(nrows=1, ncols=int(args.dual) + 1, figsize=(14, 5))
+                clear_axis(ax)
                 ax[0].set_title('True Network', fontsize=14)
                 true_net.draw(layout_type=args.draw_layout, seed=args.netseed, show=False, ax=ax[0])
-                ax[1].set_title('Tracing Networks', fontsize=14)
-                know_net.draw(pos=true_net.pos, show=False, ax=ax[1:])
-                plt.show()
-                sleep(1.5)
+                ax[1].set_title('Digital Tracing Network', fontsize=14)
+                if dual == 2:
+                    ax[-1].set_title('Manual Tracing Network', fontsize=14)
+                know_net.draw(pos=true_net.pos, show=False, ax=ax[1:], full_name=args.draw_fullname, model=args.model)
+                
+                display.display(plt.gcf())
+                if animate:
+                    display.clear_output(wait=True)
+                    
+                sleep(int(args.draw_iter))
                 
             # record metrics after event run for time current_time=e.time
             m['time'] = current_time
@@ -358,18 +383,26 @@ class EngineDual(Engine):
             if not m['nE'] + m['nI'] + m['nH']:
                 break
                 
-                
-        if args.draw:
+        if draw:
             # Drawing positions are already initialized by this point
             print('Final state:')
-            fix, ax = plt.subplots(nrows=1, ncols=int(args.dual) + 1, figsize=(14, 5))
+            clear_axis(ax)
             ax[0].set_title('True Network', fontsize=14)
             true_net.draw(show=False, ax=ax[0])
-            ax[1].set_title('Tracing Networks', fontsize=14)
-            know_net.draw(pos=true_net.pos, show=False, ax=ax[1:])
-#             plt.savefig('fig/network-' + str(true_net.inet) + '.png', bbox_inches = 'tight')
-            plt.show()
-
+            ax[1].set_title('Digital Tracing Network', fontsize=14)
+            if dual == 2:
+                ax[-1].set_title('Manual Tracing Network', fontsize=14)
+            know_net.draw(pos=true_net.pos, show=False, ax=ax[1:], full_name=args.draw_fullname, model=args.model)
+            
+            display.display(plt.gcf())
+            if animate:
+                display.clear_output(wait=True)
+                
+            if draw == 2:
+                plt.savefig('fig/network-' + str(true_net.inet) + '.pdf', format='pdf', bbox_inches = 'tight')
+            
+        if not animate:
+            plt.close()
         return result
 
             
@@ -381,18 +414,26 @@ class EngineOne(Engine):
         args = self.args
         noncomp_after = args.noncomp_after
         taur = args.taur
+        separate_traced = args.separate_traced
         true_net = self.true_net
         trans = self.trans_true
         
-        if args.draw:
-            fix, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 5))
+        # drawing vars
+        draw = args.draw
+        draw_iter = args.draw_iter
+        animate = args.animate
+        
+        if draw or draw_iter:
+            fix, ax = plt.subplots(nrows=1, ncols=2, figsize=(14, 5))
             ax[0].set_title('Infection Progress', fontsize=14)
             true_net.is_dual = False
             true_net.draw(layout_type=args.draw_layout, seed=args.netseed, show=False, ax=ax[0])
             ax[1].set_title('Tracing Progress', fontsize=14)
             true_net.is_dual = True
-            true_net.draw(show=False, ax=ax[1])
-            plt.show()
+            true_net.draw(show=False, ax=ax[1], full_name=args.draw_fullname, model=args.model)
+            display.display(plt.gcf())
+            if animate:
+                display.clear_output(wait=True)
             
         # set the dual flag such that true_net can be interpreted as the tracing network
         true_net.is_dual = True
@@ -404,7 +445,7 @@ class EngineOne(Engine):
             np.random.seed(seeder)
         
         # in the case of separate_traced, mimic dual simulation objects as if dual net was run (sim_true + sim_know)
-        if args.separate_traced:
+        if separate_traced:
             # infection simulator in this case should not be able to run 'T' events
             transition_items = defaultdict(list)
             for state in trans:
@@ -450,8 +491,8 @@ class EngineOne(Engine):
 
             e1 = sim_true.get_next_event()
             
-            ### NOTE: Running separate_traced sims on a Single network is actually SLOWER than running on Dual net directly
-            if args.separate_traced:
+            ### NOTE: Running sims with this option on a Single network is actually SLOWER than running on Dual net directly
+            if separate_traced:
                 # allow for separate tracing events to also be considered in the current events loop
                 e2 = sim_know.get_next_trace_event()
 
@@ -465,7 +506,9 @@ class EngineOne(Engine):
                 sim_know.time = e.time
 
                 # if the event chosen is a tracing event, separate logic follows (NOT updating event.FROM counts!)
-                if e.to == 'T':
+                is_trace_event = (e.to == 'T')
+                # exception: if trace_h selected, the node will be counted as traced if going to H (but will never become noncompliant)
+                if is_trace_event or (args.trace_h and e.to == 'H'):
                     # the update to total traced counts is done only once (ignore if same nid is traced again)
                     if e.node not in true_net.traced_time:
                         m['totalTraced'] += 1
@@ -476,14 +519,15 @@ class EngineOne(Engine):
                     sim_true.run_trace_event(e, True)
                     
                 # Non-compliance with isolation event
-                elif e.to == 'N':
+                if e.to == 'N':
                     # the update to total noncompliant counts is done only once (ignore if same nid is noncompliant again)
                     if e.node not in true_net.noncomp_time:
                         m['totalNonCompliant'] += 1
                         
                     sim_true.run_trace_event(e, False)
-                    
-                else:
+                
+                # otherwise, normal logic follows if NOT e.to=T event (with update counts on infection network only)
+                elif not is_trace_event:
                     sim_true.run_event(e)
 
                     # Update event.FROM counts:
@@ -514,8 +558,8 @@ class EngineOne(Engine):
                 elif e.fr == 'H':
                     m['nH'] -= 1
                     
-                # Update 'T' fr counts
-                if e.to == 'T':
+                # Update 'T' e.fr counts
+                if e.to == 'T' or (args.trace_h and e.to == 'H'):
                     m['totalTraced'] += 1
                     # if S -> T then a person has been incorrectly traced
                     if e.fr == 'S': m['totalFalseTraced'] += 1
@@ -548,12 +592,17 @@ class EngineOne(Engine):
             # if args.noncomp_after selected, nodes that have been isolating for longer than noncomp_after become automatically N
             current_time = e.time
             
-            if noncomp_after:
+            if noncomp_after and separate_traced:
                 node_traced = true_net.node_traced
+                node_states = true_net.node_states
                 traced_time = true_net.traced_time
+                blocked_states = ['H', 'D']
                 for nid in true_net.node_list:
-                    if node_traced[nid] and (current_time - traced_time[nid] >= noncomp_after):
-                        true_net.change_traced_state_fast_update(nid, False, current_time)
+                    if node_traced[nid] and node_states[nid] not in blocked_states \
+                    and (current_time - traced_time[nid] >= noncomp_after):
+                        event = sim_true.get_event_with_config(node=nid, fr='T', to='N', time=current_time)
+                        sim_true.run_trace_event(event, False)
+                        sim_know.run_trace_event(event, False)
             
             # if args.efforts selected, compute efforts for all tracing networks
             if args.efforts:
@@ -565,17 +614,20 @@ class EngineOne(Engine):
                 m['tracingEffortContact'] = [efforts_for_all[1]]
                 
             
-            if args.draw_iter:
+            if draw_iter:
                 print('State after events iteration ' + str(i) + ':')
-                fix, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 5))
+                clear_axis(ax)
                 ax[0].set_title('Infection Progress', fontsize=14)
                 true_net.is_dual = False
                 true_net.draw(layout_type=args.draw_layout, seed=args.netseed, show=False, ax=ax[0])
                 ax[1].set_title('Tracing Progress', fontsize=14)
                 true_net.is_dual = True
-                true_net.draw(show=False, ax=ax[1])
-                plt.show()
-                sleep(1.5)
+                true_net.draw(show=False, ax=ax[1], full_name=args.draw_fullname, model=args.model)
+                display.display(plt.gcf())
+                if animate:
+                    display.clear_output(wait=True)
+                    
+                sleep(int(args.draw_iter))
 
                 
             # record metrics after event run for time current_time=e.time
@@ -585,15 +637,26 @@ class EngineOne(Engine):
             if not m['nE'] + m['nI'] + m['nH']:
                 break
             
-        if args.draw:
+        if draw:
             print('Final state:')
-            fix, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 5))
+            clear_axis(ax)
             ax[0].set_title('Infection Progress', fontsize=14)
             true_net.is_dual = False
             true_net.draw(show=False, ax=ax[0])
             ax[1].set_title('Tracing Progress', fontsize=14)
             true_net.is_dual = True
-            true_net.draw(show=False, ax=ax[1])
-            plt.show()
+            true_net.draw(show=False, ax=ax[1], full_name=args.draw_fullname, model=args.model)
+            
+            display.display(plt.gcf())
+            if animate:
+                display.clear_output(wait=True)
+                
+            if draw == 2:
+                plt.savefig('fig/network-' + str(true_net.inet) + '.pdf', format='pdf', bbox_inches = 'tight')
             
         return result
+
+
+def clear_axis(ax):
+    for axis in ax:
+        axis.clear()

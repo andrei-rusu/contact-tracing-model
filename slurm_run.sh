@@ -27,22 +27,34 @@ newfile="data/run/batch2_slurm/simresult_"$NETSIZE".json"
 
 module load conda/py3-latest
 source activate contact
-
+    
 python run.py \
     --netsize $NETSIZE \
     --k 10 \
+    --p .2 \
+    --nettype "random" \
     --multip 3 \
-    --model 'covid' \
+    --model "covid" \
     --dual 1 \
-    --overlap 1 \
     --uptake .5 \
+    --overlap 1 \
     --maintain_overlap False \
-    --nnets 4 \
-    --niters 4 \
+    --nnets 10 \
+    --niters 15 \
     --separate_traced True \
+    --avg_without_earlystop True \
+    --trace_once False \
+    --first_inf 1 \
+    --earlystop_margin 2 \
+    --rem_orphans True \
     --noncomp 0 \
+    --presample 100000 \
+    --pa $pa \
     --taut .1 \
-    --taur .1 > $newfile
+    --taur .1 \
+    --sampling_type "min" \
+    --netseed 31 \
+    --seed 11 > $newfile 
 
 # Remove running artefacts from sim results
 sed -i -n '/args/,$p' $newfile

@@ -9,6 +9,9 @@ import glob
 import importlib
 import joblib
 import numpy as np
+import os
+import sys
+import io
 import matplotlib.pyplot as plt
 
 from sys import stdout
@@ -16,10 +19,27 @@ from contextlib import contextmanager
 from cProfile import Profile
 from pstats import Stats
 from collections import defaultdict
+from PIL import Image
+from imageio import mimsave
 
 from multiprocess.context import Process
 from multiprocess.pool import Pool
 
+
+saved_stdout = None
+
+# Disable print and remember stdout into saved_stdout
+def block_print():
+    if not isinstance(stdout, io.StringIO):
+        global saved_stdout
+        saved_stdout = stdout
+        sys.stdout = io.StringIO()
+
+# Restore saved_stdout into stdout
+def enable_print():
+    if saved_stdout:
+        sys.stdout = saved_stdout
+        
 
 def pad_2d_list_variable_len(a, pad=0):
     max_len = len(max(a, key=len))
@@ -301,6 +321,18 @@ def pvar(*var, owners=True):
             
 ### Pickle and JSON dump to file and retrieve functions
 
+def animate_cell_capture(capture, filename=None, fps=1, quality=6.):
+    kwargs_write = {'fps':fps, 'quality':quality}
+    if not filename:
+        filename = 'fig/simulation.gif'
+    if filename.endswith('.gif'):
+        kwargs_write.update({'quantizer':'nq'})
+    if not filename.startswith('fig/'):
+        filename = 'fig/' + filename
+    image_data = [Image.open(io.BytesIO(img_data._repr_png_())) for img_data in capture.outputs]
+    mimsave(filename, image_data, **kwargs_write)
+    
+
 def pkl(obj, filename=None):
     if not filename:
         frame = inspect.currentframe().f_back
@@ -328,7 +360,7 @@ def get_json(json_or_path):
         with open(json_or_path, 'r', encoding="utf8") as handle:
             return json.loads(handle.read())
         
-def process_json_results(path=None, print_id_fail=True):
+def process_json_results(path=None, print_id_fail=True, overlap_to_capture='overlap'):
     """
     Note this method only processes the results for the first taut value in the JSON file
     """
@@ -346,25 +378,31 @@ def process_json_results(path=None, print_id_fail=True):
             # ignore results for taur=0 as we ignore the case where no testing is done
             if args['taur'] == 0:
                 continue
-            taut = np.atleast_1d(args['taut'])[0]
+            taut = np.atleast_1d(args['taut'])
             taur = args['taur']
-            over = float(round(args['overlap'], 2))
+            over = float(round(args[overlap_to_capture], 2))
             uptake = float(round(args.get('uptake', 1.), 2))
+            dual = args['dual']
             pa = args['pa']
-            try:
-                # If only a single taut value present in running args, the results key is 'res'
-                results = json_file['res']
-            except:
-                # Backwards compatibility except block - runs when mutliple taut values have been selected
-                # The following try block is needed to cover for the case the supplied taut was an int
+            
+            for taut_entry in taut:
+                # if only one taut value was provided, results in newer versions are found under key 'res'
                 try:
-                    results = json_file[str(taut)]
+                    results = json_file['res']
+                # for multiple taut values or older versions, the results are under keys str(taut_entry)
                 except:
-                    results = json_file[str(int(taut))]
-            all_sim_res[pa][uptake][over][taut][taur] = results
+                    # The following try block is needed to cover for the case in which the supplied taut is either float/int
+                    try:
+                        results = json_file[str(taut_entry)]
+                    except:
+                        results = json_file[str(int(taut_entry))]
+                        
+                all_sim_res[pa][dual][uptake][over][taut_entry][taur] = results
+            
         except json.JSONDecodeError:
             if print_id_fail:
                 print(int(re.findall('id(.*?)_', file)[0]), end=",")
+                
     return all_sim_res
 
 

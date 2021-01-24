@@ -241,7 +241,10 @@ class Simulation():
         best_time = time + sampling(sum_lamdas)
                 
         return SimEvent(node=id_next, fr=from_next, to=to_next, time=best_time)
-                
+    
+    
+    def get_event_with_config(self, **kwargs):
+        return SimEvent(**kwargs)
         
     def run_event(self, e):
         self.net.change_state_fast_update(e.node, e.to)
@@ -251,6 +254,7 @@ class Simulation():
     def run_event_no_update(self, e):
         self.net.change_state(e.node, e.to, update=False)
         self.time = e.time
+        self.last_updated = e.node
         
     def run_trace_event(self, e, to_traced=True):
         self.net.change_traced_state_fast_update(e.node, to_traced, e.time)

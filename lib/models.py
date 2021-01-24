@@ -22,8 +22,8 @@ def get_transitions_for_model(args, exp):
 
 def populate_tracing_trans(trans_know, args, exp):
     noncomp = args.noncomp
-    # if no noncompliace rate is chosen or testing is completely disabled, skip this transition
-    if noncomp and args.taur:
+    # if no noncompliace rate is chosen, separate_traced is inactive or testing is disabled, skip transition T->N
+    if noncomp and args.separate_traced and args.taur:
         if args.noncomp_time:
             noncomp_func = get_stateful_sampling_func( \
                 'expFactorTimesTimeDif', lamda=noncomp, exp=exp)
@@ -41,7 +41,7 @@ def sir(trans_true, args, exp):
         # allow spontaneuous recovery (without tracing) with rate gamma
         add_trans(trans_true, 'I', 'R', get_stateless_sampling_func(args.gamma, exp))
     
-def seir(trans_true, trans_know, args, exp):
+def seir(trans_true, args, exp):
     # local vars for efficiency
     beta = args.beta
     # Infections spread based on true_net connections depending on nid

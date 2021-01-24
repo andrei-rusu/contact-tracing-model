@@ -15,10 +15,26 @@ from lib.utils import rand_pairs, rand_pairs_excluding, get_z_for_overlap, get_o
 from lib.simulation import Simulation
 from lib.exp_sampler import get_sampler
 
+# in the state names we distinguish between I (SIR/SEIR) and Ip (Covid) only for drawing legend purposes
+STATES_NAMES = {
+    'S': 'Susceptible',
+    'E': 'Exposed',
+    'I': 'Infectious',
+    'Ip': 'Infectious (presym)',
+    'Ia': 'Infectious (asym)',
+    'Is': 'Infectious (sym)',
+    'H': 'Hospitalized',
+    'T': 'Traced',
+    'R': 'Recovered',
+    'D': 'Dead',
+    'N': 'Non-isolating'
+}
+
 STATES_COLOR_MAP = {
     'S': 'darkgreen',
     'E': 'yellow',
     'I': 'orange',
+    'Ip': 'orange',
     'Ia': 'pink',
     'Is': 'red',
     'H': 'cyan',
@@ -26,6 +42,12 @@ STATES_COLOR_MAP = {
     'R': 'lime',
     'D': 'gray',
     'N': 'purple'
+}
+
+MODEL_TO_STATES = {
+    'sir': ['S', 'I', 'R', 'T', 'N'],
+    'seir': ['S', 'E', 'I', 'R', 'T', 'N'],
+    'covid': ['S', 'E', 'Ip', 'Ia', 'Is', 'H', 'D', 'R', 'T', 'N']
 }
 
 class Network(nx.Graph):
@@ -300,8 +322,9 @@ class Network(nx.Graph):
         for neigh in self.neighbors(nid):
             neigh_counts = counts[neigh]
             # Note: we update the counts of traced only if T event; if N event, we assume the count stays the same
+            # This is to say that becoming N only impacts infection progression not tracing progression
             if to_traced:
-                neigh_counts['T'] += 1
+                neigh_counts['T'] += count_val
             if update_infectious_counts:
                 neigh_counts[inf_state] -= count_val
                 
@@ -349,7 +372,7 @@ class Network(nx.Graph):
         return round(taur * randEffortAcum, 2), round(self.count_importance * tracingEffortAccum, 2)
     
         
-    def draw(self, pos=None, show=True, ax=None, layout_type='spring_layout', seed=43, legend=True):
+    def draw(self, pos=None, show=True, ax=None, layout_type='spring_layout', seed=43, legend=True, full_name=False, model='covid'):
         # for the true network, colors for all nodes are based on their state
         if not self.is_dual:
             colors = list(map(lambda x: STATES_COLOR_MAP[x], self.node_states))
@@ -365,7 +388,7 @@ class Network(nx.Graph):
                 else:
                     colors[nid] = STATES_COLOR_MAP[state]
                     
-        # sometimes an iterable of axis may be supplied instead of one Axis object, so get the first element
+        # sometimes an iterable of axis may be supplied instead of one Axis object, so only get the first element
         if isinstance(ax, Iterable): ax = ax[0]
 
         # by doing this we avoid overwriting self.pos with pos when we just want a different layout for the drawing
@@ -379,9 +402,15 @@ class Network(nx.Graph):
         nx.draw(self, pos=pos, node_color=colors, ax=ax, with_labels=True)
         
         if legend:
-            plt.subplots_adjust(left=.1)
+            model_states = MODEL_TO_STATES[model]
+            if full_name:
+                label = lambda state: STATES_NAMES[state]
+                plt.subplots_adjust(left=.2)
+            else:
+                label = lambda state: state
+                plt.subplots_adjust(left=.1)
             # create color legend
-            plt.legend(handles=[mpatches.Patch(color=color, label=state) for state, color in STATES_COLOR_MAP.items()], \
+            plt.legend(handles=[mpatches.Patch(color=STATES_COLOR_MAP[state], label=label(state)) for state in model_states], \
                        loc='upper left', prop={'size': 12}, bbox_to_anchor=(0,1), bbox_transform=plt.gcf().transFigure)
         
         if show:
