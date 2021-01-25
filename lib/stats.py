@@ -2,10 +2,12 @@ from collections import defaultdict
 import numpy as np
 import json
 
-from lib.utils import Event, NumpyEncoder, get_overlap_for_z, get_boxplot_statistics, pad_2d_list_variable_len
+import lib.utils as ut
+
+from lib.utils import get_statistics, pad_2d_list_variable_len
 
 # Class to hold stats events
-class StatsEvent(Event):
+class StatsEvent(ut.Event):
     pass
 
 class StatsProcessor():
@@ -60,7 +62,7 @@ class StatsProcessor():
         if args.dual:
             # If dual=True, true overlap is EITHER the inputted overlap OR (k-zrem)/(k-zadd)
             summary['args']['true-overlap'] = \
-                get_overlap_for_z(args.k, args.zadd, args.zrem) if args.overlap is None else args.overlap
+                ut.get_overlap_for_z(args.k, args.zadd, args.zrem) if args.overlap is None else args.overlap
         else:
             # when single network run (i.e. dual=False), the true overlap is 1 since all the dual configs are ignored
             summary['args']['true-overlap'] = 1
@@ -104,6 +106,7 @@ class StatsProcessor():
                     idx_early_stopped.append(ser_index)
                 # counter var which will be used to index the current result in the series at a specific time slot
                 serI = 1
+                # iterate over "time splits"
                 for j in range(splits):
                     # increment until the upper time limit of the j-th split - i.e. time_range_limits[j]
                     # is exceeded by an event (and therefore the event will be part of block j + 1)
@@ -179,19 +182,21 @@ class StatsProcessor():
             ###############
             # compute averages and other statistics for all simulation result parameters over time
             stats_for_timed_parameters = []
+            stats_for_laststamp = []
             for i in range(num_vars):
-                stats_for_timed_parameters.append(get_boxplot_statistics(accumulator[i], axis=1, avg_without_idx=without_idx))
-            stats_for_timed_parameters = np.array(stats_for_timed_parameters)
+                current_stats = accumulator[i]
+                stats_for_timed_parameters.append(get_statistics(current_stats, compute='mean', axis=1, avg_without_idx=without_idx))
+                stats_for_laststamp.append(get_statistics(current_stats[-1], compute='all', avg_without_idx=without_idx)[0])
                 
             # compute averages and other statistics for the peak simulation results
-            stats_for_max_inf = get_boxplot_statistics(i_max, avg_without_idx=without_idx)[0]
-            stats_for_timeofmax_inf = get_boxplot_statistics(i_timeofmax, avg_without_idx=without_idx)[0]
-            stats_for_max_hos = get_boxplot_statistics(h_max, avg_without_idx=without_idx)[0]
-            stats_for_timeofmax_hos = get_boxplot_statistics(h_timeofmax, avg_without_idx=without_idx)[0]
+            stats_for_max_inf = get_statistics(i_max, compute='all', avg_without_idx=without_idx)[0]
+            stats_for_timeofmax_inf = get_statistics(i_timeofmax, compute='mean+wo', avg_without_idx=without_idx)[0]
+            stats_for_max_hos = get_statistics(h_max, compute='all', avg_without_idx=without_idx)[0]
+            stats_for_timeofmax_hos = get_statistics(h_timeofmax, compute='mean+wo', avg_without_idx=without_idx)[0]
             
             # compute averages and other stats for r_eff's
-            stats_for_r_eff = get_boxplot_statistics(pad_2d_list_variable_len(r_eff_series), axis=0, avg_without_idx=without_idx)
-            stats_for_growth = get_boxplot_statistics(pad_2d_list_variable_len(growth_series), axis=0, avg_without_idx=without_idx)
+            stats_for_r_eff = get_statistics(ut.pad_2d_list_variable_len(r_eff_series), compute='mean+wo', avg_without_idx=without_idx)
+            stats_for_growth = get_statistics(ut.pad_2d_list_variable_len(growth_series), compute='mean+wo', avg_without_idx=without_idx)
             
             ##############
             # update averages dictionary for the current parameter value
@@ -207,13 +212,13 @@ class StatsProcessor():
             current['average-time-of-max-infected'] = stats_for_timeofmax_inf
             
             current['average-total-infected'] = stats_for_timed_parameters[1]
-            current['average-overall-infected'] = stats_for_timed_parameters[1][-1]
+            current['average-overall-infected'] = stats_for_laststamp[1]
             
             current['average-total-traced'] = stats_for_timed_parameters[2]
-            current['average-overall-traced'] = stats_for_timed_parameters[2][-1]
+            current['average-overall-traced'] = stats_for_laststamp[2]
             
             current['average-total-recovered'] = stats_for_timed_parameters[3]
-            current['average-overall-recovered'] = stats_for_timed_parameters[3][-1]
+            current['average-overall-recovered'] = stats_for_laststamp[3]
             
             if efforts:
                 current['average-effort-random'] = stats_for_timed_parameters[4]
@@ -224,22 +229,24 @@ class StatsProcessor():
             current['average-time-of-max-hospital'] = stats_for_max_hos
 
             current['average-total-hospital'] = stats_for_timed_parameters[7]
-            current['average-overall-hospital'] = stats_for_timed_parameters[7][-1]
+            current['average-overall-hospital'] = stats_for_laststamp[7]
             
             current['average-total-death'] = stats_for_timed_parameters[8]
-            current['average-overall-death'] = stats_for_timed_parameters[8][-1]
+            current['average-overall-death'] = stats_for_laststamp[8]
 
             current['average-total-infectious'] = stats_for_timed_parameters[9]
-            current['average-overall-infectious'] = stats_for_timed_parameters[9][-1]
+            current['average-overall-infectious'] = stats_for_laststamp[9]
 
             current['average-total-false-traced'] = stats_for_timed_parameters[10]
-            current['average-overall-false-traced'] = stats_for_timed_parameters[10][-1]
+            current['average-overall-false-traced'] = stats_for_laststamp[10]
             
             current['average-total-false-negative'] = stats_for_timed_parameters[11]
-            current['average-overall-false-negative'] = stats_for_timed_parameters[11][-1]
+            current['average-overall-false-negative'] = stats_for_laststamp[11]
             
             current['average-total-noncompliant'] = stats_for_timed_parameters[12]
-            current['average-overall-noncompliant'] = stats_for_timed_parameters[12][-1]
+            current['average-overall-noncompliant'] = stats_for_laststamp[12]
+            
+            print(current['average-overall-traced'])
             
             # This is based on Tsimring and Huerta 2002
             current['r-trace'] = contacts_scaler * args.beta / (infectious_time_rate + args.beta + args.taur * \
@@ -249,6 +256,6 @@ class StatsProcessor():
             current['growth'] = stats_for_growth
 
         if printit:
-            print(json.dumps(summary, cls=NumpyEncoder))
+            print(json.dumps(summary, cls=ut.NumpyEncoder))
 
         return summary

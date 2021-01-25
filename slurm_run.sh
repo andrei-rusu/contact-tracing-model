@@ -5,10 +5,10 @@
 # - these can be overridden on the qsub command line
 #
 #SBATCH --job-name="Epidemic Simulation"
-#SBATCH --ntasks-per-node=8     # Tasks per node
+#SBATCH --ntasks-per-node=20     # Tasks per node
 ###SBATCH --ntasks=1               # Number of total tasks
 #SBATCH --nodes=1                # Number of nodes requested
-#SBATCH --time=00:30:00          # walltime
+#SBATCH --time=02:30:00          # walltime
 #SBATCH -o data/run/job_output/slurm/slurm-%A_%a.out        # STDOUT
 #SBATCH -e data/run/job_output/slurm/slurm-%A_%a.err        # STDERR
 
@@ -20,13 +20,16 @@ fi
 #Change to directory from which job was submitted
 cd "$HOME/contact-tracing-model"
 
-NETSIZE=200
+NETSIZE=50000
 
 # newfile="data/run/batch2_slurm/simresult"$SLURM_ARRAY_TASK_ID".json"
 newfile="data/run/batch2_slurm/simresult_"$NETSIZE".json"
 
 module load conda/py3-latest
 source activate contact
+
+# Needed such that matplotlib does not produce error because XDG_RUNTIME_DIR not set
+export MPLBACKEND=Agg
     
 python run.py \
     --netsize $NETSIZE \

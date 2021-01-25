@@ -25,7 +25,6 @@ from multiprocess.pool import Pool
 
 
 saved_stdout = None
-
 # Disable print and remember stdout into saved_stdout
 def block_print():
     if not isinstance(stdout, io.StringIO):
@@ -184,46 +183,123 @@ def expFactorTimesCountMultiState_rate(net, nid, states=['I'], lamda=1, rel_stat
 
 
 
-def get_boxplot_statistics(data, axis=0, avg_without_idx=None, round_to=2):
+### Methods for computing various statistics from the Simulation results ###
+
+def get_statistics(data, compute='mean', axis=0, avg_without_idx=None, round_to=2):
     for_data = np.array(data)
     if axis:
         for_data = for_data.T
+        
+    result_list = []
+    
+    if compute == 'mean':
+        result_list = get_means_and_std(for_data, None, round_to)
+    elif compute == 'mean+wo':
+        result_list = get_means_and_std(for_data, avg_without_idx, round_to)
+    elif compute == 'boxplot':
+        result_list = get_boxplot_statistics(for_data, None, round_to)
+    elif compute == 'boxplot+wo':
+        result_list = get_boxplot_statistics(for_data, avg_without_idx, round_to)
+    else:
+        if compute == 'mean_boxplot':
+            result_list = get_means_and_std(for_data, None, round_to)
+            boxplot_stats_list = get_boxplot_statistics(for_data, None, round_to)
+        elif compute == 'mean+wo_boxplot':
+            result_list = get_means_and_std(for_data, avg_without_idx, round_to)
+            boxplot_stats_list = get_boxplot_statistics(for_data, None, round_to)        
+        elif compute == 'mean_boxplot+wo':
+            result_list = get_means_and_std(for_data, None, round_to)
+            boxplot_stats_list = get_boxplot_statistics(for_data, avg_without_idx, round_to)      
+        elif compute == 'all':
+            result_list = get_means_and_std(for_data, avg_without_idx, round_to)
+            boxplot_stats_list = get_boxplot_statistics(for_data, avg_without_idx, round_to)
+        
+        for i in range(len(result_list)):
+            result_list[i].update(boxplot_stats_list[i])
+            
+    return result_list
+
+def get_means_and_std(for_data, avg_without_idx=None, round_to=2):
     shape_dat = for_data.shape
     # compute means and standard devs - if more than 1 element ddof=1, otherwise just 0
     # if ndim = 1 output array with one element
     if len(shape_dat) == 1:
         # note that the full mean is computed during the boxplot routine, so we skip that
+        means = [np.mean(for_data)]
         stds = [np.std(for_data, ddof=1) if shape_dat[0] > 1 else 0]
     else:
         # note that the full mean is computed during the boxplot routine, so we skip that
+        means = np.mean(for_data, axis=0)
         stds = np.std(for_data, axis=0, ddof=1) if shape_dat[0] > 1 else [0] * shape_dat[1]
     
-    # also select data without certain indexes
-    if avg_without_idx:
-        data_without_idx = np.delete(for_data, avg_without_idx, axis=0)
-        shape_dat_without = data_without_idx.shape
-        if len(shape_dat_without) == 1:
-            means_without = [np.mean(data_without_idx) if shape_dat_without[0] > 0 else 0]
-            stds_without = [np.std(data_without_idx, ddof=1) if shape_dat_without[0] > 1 else 0]
+    # record 'wo' only if avg_without_idx exists and it does not cover the whole range of for_data in the first dim
+    is_record_avg_without = (avg_without_idx is not None and len(for_data) > len(avg_without_idx))
+
+    # Record statistics wihtout indexes covered by avg_without_idx if not all indexes are to be removed
+    if is_record_avg_without:
+        if avg_without_idx:
+            data_without_idx = np.delete(for_data, avg_without_idx, axis=0)
+            shape_dat_without = data_without_idx.shape
+            if len(shape_dat_without) == 1:
+                means_without = [np.mean(data_without_idx)]
+                stds_without = [np.std(data_without_idx, ddof=1) if shape_dat_without[0] > 1 else 0]
+            else:
+                means_without = np.mean(data_without_idx, axis=0)
+                stds_without = np.std(data_without_idx, axis=0, ddof=1) if shape_dat_without[0] > 1 else [0] * shape_dat_without[1]
+        # Note: if avg_without_idx = [] it means the option was selected from args, but no simulation early stopped
+        # In this case, we report the alternative: actual mean/std in order to be consistent across runs
         else:
-            means_without = np.mean(data_without_idx, axis=0) if shape_dat_without[0] > 0 else [0] * shape_dat_without[1]
-            stds_without = np.std(data_without_idx, axis=0, ddof=1) if shape_dat_without[0] > 1 else [0] * shape_dat_without[1]
-    
+            means_without = means
+            stds_without = stds
+            
     # this list will hold the statistic dict results
     results = []
-    # boxplot computes mean, quartiles and whiskers
-    B = plt.boxplot(for_data, showmeans=True)
-    plt.close()
-    # Record means and medians for each axis
-    means = B['means']
-    meds = B['medians']
-    # there are 2 whiskers (low, high) per axis !!!
-    whisks = B['whiskers']
     # iterate through the statistics
     for i in range(len(means)):
         dct = {}
-        dct['mean'] = round(means[i].get_ydata()[0], round_to)
-        dct['std'] = round(stds[i], 2)
+        dct['mean'] = round(means[i], round_to)
+        dct['std'] = round(stds[i], round_to)
+        if is_record_avg_without:
+            dct['mean_wo'] = round(means_without[i], round_to)
+            dct['std_wo'] = round(stds_without[i], round_to)
+        results.append(dct)
+        
+    return results
+
+def get_boxplot_statistics(for_data, avg_without_idx=None, round_to=2):
+    # boxplot computes mean, quartiles and whiskers
+    B = plt.boxplot(for_data)
+    # Record medians for each axis
+    meds = B['medians']
+    # there are 2 whiskers (low, high) per axis !!!
+    whisks = B['whiskers']
+    
+    # record 'wo' only if avg_without_idx exists and it does not cover the whole range of for_data in the first dim
+    is_record_avg_without = (avg_without_idx is not None and len(for_data) > len(avg_without_idx))
+    
+    # Record statistics wihtout indexes covered by avg_without_idx if not all indexes are to be removed
+    if is_record_avg_without:
+        if avg_without_idx:
+            data_without_idx = np.delete(for_data, avg_without_idx, axis=0)
+            if data_without_idx.size:
+                B = plt.boxplot(data_without_idx)
+                # Record medians for each axis
+                meds_wo = B['medians']
+                # there are 2 whiskers (low, high) per axis !!!
+                whisks_wo = B['whiskers']
+        # we also deal with the case in which avg_without_idx = [], in which case the "wo" values preserve the "with" values
+        else:
+            meds_wo = meds
+            whisks_wo = whisks
+            
+    # close the plots objects
+    plt.close()
+    
+    # this list will hold the statistic dict results
+    results = []
+    # iterate through the statistics
+    for i in range(len(meds)):
+        dct = {}
         whisk1 = whisks[2*i].get_ydata()
         whisk2 = whisks[2*i+1].get_ydata()
         dct['whislo'] = round(whisk1[1], round_to)
@@ -231,12 +307,18 @@ def get_boxplot_statistics(data, axis=0, avg_without_idx=None, round_to=2):
         dct['med'] = round(meds[i].get_ydata()[0], round_to)
         dct['q3'] = round(whisk2[0], round_to)
         dct['whishi'] = round(whisk2[1], round_to)
-        if avg_without_idx is not None:
-            # Note: if avg_without_idx = [] it means the option was selected from args, but no simulation early stopped
-            # In this case, we report the alternative = actual mean/std in order to be consistent across runs
-            dct['mean_wo'] = round(means_without[i], round_to) if avg_without_idx else dct['mean']
-            dct['std_wo'] = round(stds_without[i], round_to) if avg_without_idx else dct['std']
+        
+        if is_record_avg_without:
+            whisk1 = whisks_wo[2*i].get_ydata()
+            whisk2 = whisks_wo[2*i+1].get_ydata()
+            dct['whislo_wo'] = round(whisk1[1], round_to)
+            dct['q1_wo'] = round(whisk1[0], round_to)
+            dct['med_wo'] = round(meds_wo[i].get_ydata()[0], round_to)
+            dct['q3_wo'] = round(whisk2[0], round_to)
+            dct['whishi_wo'] = round(whisk2[1], round_to)
+        
         results.append(dct)
+        
     return results
 
     
