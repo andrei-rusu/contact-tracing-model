@@ -16,7 +16,7 @@ class Simulation():
         self.isolate_S = isolate_S
         self.trace_once = trace_once
         self.time = 0
-        # Create Adapter to allow the rate returned by rate_func to be either a base rate (which shall be exp-sampled) 
+        # Create Adapter to allow the rate returned by rate_func to be either a base rate (which shall be exponentially sampled) 
         # or an exponential rate directly (which shall be left unchanged)
         if already_exp:
             self.sampling = lambda rate: rate
@@ -24,10 +24,17 @@ class Simulation():
             sampler = get_sampler(presample_size=presample, scale_one=True)
             self.sampling = lambda rate: (sampler.get_next_sample(rate) if rate else float('inf'))
         # variables for Gillespie sampling
+        # node that gets invalidated after an update
         self.last_updated = -1
+        # the current base rates for each of the node
         self.lamdas = defaultdict(list)
 
     def get_next_event(self):
+        """
+        Sample next event using CT Monte Carlo
+        This is used to sample infection events and trace events if args.separate_traced=False; otherwise only infection events
+        """
+        
         id_next = None
         from_next = None
         to_next = None
@@ -65,6 +72,10 @@ class Simulation():
         return SimEvent(node=id_next, fr=from_next, to=to_next, time=best_time)
     
     def get_next_trace_event(self):
+        """
+        Sample trace event using CT Monte Carlo - this gets executed only if args.separate_traced=True
+        """
+        
         id_next = None
         from_next = None
         to_next = None
@@ -153,6 +164,9 @@ class Simulation():
     
     
     def get_next_event_sample_only_minimum(self, trans_know, tracing_nets):
+        """
+        Sampling using Gillespie's Algorithm
+        """
         
         # making local vars for efficiency
         net = self.net

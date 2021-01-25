@@ -7,7 +7,6 @@ import pickle
 import json
 import glob
 import importlib
-import joblib
 import numpy as np
 import os
 import sys
@@ -20,7 +19,6 @@ from cProfile import Profile
 from pstats import Stats
 from collections import defaultdict
 from PIL import Image
-from imageio import mimsave
 
 from multiprocess.context import Process
 from multiprocess.pool import Pool
@@ -269,6 +267,7 @@ def tqdm_redirect(*args, **kwargs):
 @contextmanager
 def tqdm_joblib(tqdm_object):
     """Context manager to patch joblib to report into tqdm progress bar given as argument"""
+    import joblib
     
     class TqdmBatchCompletionCallback(joblib.parallel.BatchCompletionCallBack):
         def __init__(self, *args, **kwargs):
@@ -319,9 +318,12 @@ def pvar(*var, owners=True):
     print()
             
             
-### Pickle and JSON dump to file and retrieve functions
+### Animate cell output to file, Pickle or JSON dump to file and retrieve functions
 
 def animate_cell_capture(capture, filename=None, fps=1, quality=6.):
+    # import imageio here to avoid dependency if no writing of animation is performed
+    from imageio import mimsave
+    
     kwargs_write = {'fps':fps, 'quality':quality}
     if not filename:
         filename = 'fig/simulation.gif'

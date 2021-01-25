@@ -49,7 +49,7 @@ python run.py \
     --rem_orphans True \
     --noncomp 0 \
     --presample 100000 \
-    --pa $pa \
+    --pa .2 \
     --taut .1 \
     --taur .1 \
     --sampling_type "min" \

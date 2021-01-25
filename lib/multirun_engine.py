@@ -1,7 +1,6 @@
 import random
 import numpy as np
 import matplotlib.pyplot as plt
-from IPython import display
 
 from time import sleep
 from itertools import count
@@ -167,6 +166,9 @@ class EngineDual(Engine):
         
         # If either of the drawing flag is enabled, instantiate drawing figure and axes, and draw initial state
         if draw or draw_iter:
+            # import IPython here to avoid dependency if no drawing is performed
+            from IPython import display
+
             fig, ax = plt.subplots(nrows=1, ncols=int(dual) + 1, figsize=(14, 5))
 
             # we make plots for the true network + all the dual networks
@@ -424,6 +426,9 @@ class EngineOne(Engine):
         animate = args.animate
         
         if draw or draw_iter:
+            # import IPython here to avoid dependency if no drawing is performed
+            from IPython import display
+            
             fix, ax = plt.subplots(nrows=1, ncols=2, figsize=(14, 5))
             ax[0].set_title('Infection Progress', fontsize=14)
             true_net.is_dual = False
