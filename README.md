@@ -8,7 +8,7 @@ Link to original study: Andrei Rusu et al., 2020 https://www.dropbox.com/s/ozdbd
 
 <br />
 
-<p style="text-align:center;"><a href="https://www.dropbox.com/s/m284tx8tmgeckqk/noncomp.mp4?dl=0"><img src="fig/noncomp.gif"/></a></p>
+<p style="text-align:center;"><a href="https://www.dropbox.com/s/m284tx8tmgeckqk/noncomp.mp4?dl=0" target="_blank"><img src="fig/noncomp.gif"/></a></p>
 
 
 
