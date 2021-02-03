@@ -97,8 +97,8 @@ class StatsProcessor():
             # indexes of early stopped
             idx_early_stopped = []
             # array of arrays containing multiple Reff/growth_rates measurements sampled every r_window
-            r_eff_series = []
             growth_series = []
+            active_growth_series = []
                                 
             for ser_index, ser in enumerate(series_to_sum):
                 # if the overall infected remained smaller than the no. of initial infected + selected margin, account as earlystop
@@ -131,13 +131,13 @@ class StatsProcessor():
                     accumulator[12][j][ser_index] = last_idx.totalNonCompliant
 
                 
-                # get first event -> needed to compute peaks and Reff
+                # get first event -> needed to compute peaks and growth rates
                 first_event = ser[0]
-                r_eff = []
                 growth = []
+                active_growth = []
 
                 # Get Peak of Infection, Peak of Hospitalization, Time of peaks, and Reff for r_window
-                # reference_ vars are for Reff, _max vars are for peaks
+                # reference_ vars are for growths, _max vars are for peaks
                 this_i_max = reference_past_active_inf = first_event.nI + first_event.nE
                 this_h_max = first_event.nH
                 reference_past_total_inf = first_event.totalInfected
@@ -159,10 +159,10 @@ class StatsProcessor():
                     # Calculate Reff for a specific time period if there were any active infected at the previous time point
                     if reference_past_active_inf and event_time >= r_window + reference_past_time:
                         new_infections = total_infected - reference_past_total_inf
-                        # we consider Reff = new_cases / active_cases_past
-                        r_eff.append(new_infections / reference_past_active_inf)
-                        # the growth_rate = active_cases_now / active_cases_past
-                        growth.append(active_infected /  reference_past_active_inf)
+                        # growth_rate = new_cases / active_cases_past
+                        growth.append(new_infections / reference_past_active_inf)
+                        # active_growth_rate = active_cases_now / active_cases_past
+                        active_growth.append(active_infected /  reference_past_active_inf)
                         # change reference past measurement to use for the next Reff computation
                         reference_past_total_inf = total_infected
                         reference_past_time = event_time
@@ -173,8 +173,8 @@ class StatsProcessor():
                 h_max.append(this_h_max)
                 h_timeofmax.append(this_h_timeofmax)
                 # note this will be a list of lists
-                r_eff_series.append(r_eff)
                 growth_series.append(growth)
+                active_growth_series.append(active_growth)
                 
             # indexes to remove from the alternative mean_wo and std_wo calculation (only if option selected from args)
             without_idx = idx_early_stopped if args.avg_without_earlystop else None
@@ -194,9 +194,11 @@ class StatsProcessor():
             stats_for_max_hos = get_statistics(h_max, compute='all', avg_without_idx=without_idx)[0]
             stats_for_timeofmax_hos = get_statistics(h_timeofmax, compute='mean+wo', avg_without_idx=without_idx)[0]
             
-            # compute averages and other stats for r_eff's
-            stats_for_r_eff = get_statistics(ut.pad_2d_list_variable_len(r_eff_series), compute='mean+wo', avg_without_idx=without_idx)
-            stats_for_growth = get_statistics(ut.pad_2d_list_variable_len(growth_series), compute='mean+wo', avg_without_idx=without_idx)
+            # compute averages and other stats for growth rates
+            stats_for_growth = get_statistics(ut.pad_2d_list_variable_len(growth_series), \
+                                             compute='mean+wo', avg_without_idx=without_idx)
+            stats_for_active_growth = get_statistics(ut.pad_2d_list_variable_len(active_growth_series), \
+                                              compute='mean+wo', avg_without_idx=without_idx)
             
             ##############
             # update averages dictionary for the current parameter value
@@ -251,9 +253,9 @@ class StatsProcessor():
             # This is based on Tsimring and Huerta 2002
             current['r-trace'] = contacts_scaler * args.beta / (infectious_time_rate + args.beta + args.taur * \
                                         (1 + current['average-overall-traced']['mean']/current['average-overall-infected']['mean']))
-            # Reff based on r_window
-            current['r-eff'] = stats_for_r_eff
+            # growth rates based on r_window
             current['growth'] = stats_for_growth
+            current['active-growth'] = stats_for_active_growth
 
         if printit:
             print(json.dumps(summary, cls=ut.NumpyEncoder))

@@ -38,6 +38,17 @@ def enable_print():
         sys.stdout = saved_stdout
         
 
+def r_from_growth(growth, method='exp', t=7, mean=6.6, shape=1.87, inv_scale=0.28):
+    """
+    Get r from growth rate (NOT exponential) assuming Gamma distribution of generation time
+    """
+    if method == 'exp':
+        if inv_scale is None:
+            inv_scale = shape / mean
+        return (1 + math.log(growth) / (inv_scale * t)) ** shape
+    elif method == 'jrc':
+        return 1 + math.log(growth) / t * mean
+
 def pad_2d_list_variable_len(a, pad=0):
     max_len = len(max(a, key=len))
     return [i + [pad] * (max_len - len(i)) for i in a]

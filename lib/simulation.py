@@ -166,6 +166,13 @@ class Simulation():
     def get_next_event_sample_only_minimum(self, trans_know, tracing_nets):
         """
         Sampling using Gillespie's Algorithm
+        
+        The Simulation object usually runs over one type of network (INFECTION or TRACING) based on one transition object;
+        However, in Gillespie we need access to both the INFECTION and the TRACING rates in one place at the same time!
+        To keep the class signature the same for all sampling methods, we pass the TRACING transition object and networks at 
+        this method's invocation time on a Simulation object which already contains the INFECTION network and transition object.
+        
+        Regardless of the implementation, one should think of both the INFECTION and the TRACING objects as global variables here
         """
         
         # making local vars for efficiency

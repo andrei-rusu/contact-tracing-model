@@ -49,7 +49,7 @@ PARAMETER_DEFAULTS = {
     'seed': -1, 'netseed': -1, # seed of infection and exponentials, and the seed for network initializations
     'summary_print': -1, # -1 -> full_summary never called; 0 -> no summary printing, 1 -> print summary as well
     'summary_splits': 1000, # how many time splits to use for the epidemic summary
-    'r_window': 7, # number of days for Reff calculation
+    'r_window': 5, # number of days for Reff calculation
     'separate_traced': True, # whether to have the Traced state separate from all the other states
     'model': 'sir', # can be sir, seir or covid
     'first_inf': 1., # number of nodes infected at the start of sim
