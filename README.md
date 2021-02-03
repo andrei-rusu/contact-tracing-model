@@ -4,20 +4,19 @@ A <b>multi-site mean-field model</b> for studying the effects of different "test
 
 SEIR-T is a compartmental formulation that describes SARS-Cov-2 transmission and the corresponding contact tracing in terms of network-defined neighborhoods.
 
-Link to original study: Andrei Rusu et al., 2020 https://www.dropbox.com/s/ozdbdlw0351895p/Contact_Tracing.pdf
+Link to original study: Andrei Rusu et al., 2020 https://www.dropbox.com/s/ozdbdlw0351895p/Contact_Tracing.pdf 
+
+<br />
+
+<p style="text-align:center;"><a href="https://www.dropbox.com/s/m284tx8tmgeckqk/noncomp.mp4?dl=0"><img src="fig/noncomp.gif"/></a></p>
 
 
-<p align="middle">
-  <a href="https://www.dropbox.com/s/bxirlp1271teadg/nct.mp4?raw=1#t=0.1"><img src="https://www.dropbox.com/s/uke3ryd960nf2l8/nct.gif?raw=1" width="49%" height="150" /></a>
-  <a href="https://www.dropbox.com/s/3o0a63ivj8gk82c/ct.mp4?raw=1#t=0"><img src="https://www.dropbox.com/s/5yl1b83ri04n3wt/ct.gif?raw=1" width="49%" height="150" /></a>
 
-</p>
-
-<!-- <i>Ineffective Manual + Digital Tracing </i>          |  <i>Efficient Manual + Digital Tracing </i>
+<i>Ineffective Manual + Digital Tracing </i>          |  <i>Efficient Manual + Digital Tracing </i>
 :-------------------------:|:-------------------------:
-[![Ineffective tracing example](https://www.dropbox.com/s/5yl1b83ri04n3wt/ct.gif?raw=1)](https://www.dropbox.com/s/bxirlp1271teadg/nct.mp4?raw=1#t=0.1) |  [![Efficient tracing example](https://www.dropbox.com/s/5yl1b83ri04n3wt/ct.gif?raw=1)](https://www.dropbox.com/s/3o0a63ivj8gk82c/ct.mp4?raw=1#t=0.1) -->
+[![Ineffective tracing example](fig/nct.gif)](https://www.dropbox.com/s/bxirlp1271teadg/nct.mp4?raw=1#t=0.1) |  [![Efficient tracing example](fig/ct.gif)](https://www.dropbox.com/s/3o0a63ivj8gk82c/ct.mp4?raw=1#t=0.1)
 
-
+<br />
 <h2>Running example:</h2>
 
 ```
@@ -60,7 +59,7 @@ kwargs = {
 run.run_mock(**kwargs)
 ```
 
-<br/>
+<br />
 <h2>Parameter descriptions:</h2>
 
 ```python
