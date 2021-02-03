@@ -58,6 +58,8 @@ def covid(trans_true, args, exp):
     # local vars for efficiency
     beta = args.beta
     rel_beta = args.rel_beta
+    # mark args.spontan as always True for Covid
+    args.spontan = True
     # Infections spread based on true_net connections depending on nid
     add_trans(trans_true, 'S', 'E', get_stateful_sampling_func(
               'expFactorTimesCountMultiState', states=['Is'], lamda=beta, exp=exp, 

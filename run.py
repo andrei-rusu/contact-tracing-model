@@ -16,56 +16,55 @@ from lib.models import get_transitions_for_model, add_trans
 from lib.multirun_engine import EngineNet
 from lib.exp_sampler import ExpSampler
 
-# Covid default parameter values according to Domenico et al. 2020
+# Covid infection-related parameters according to DiDomenico et al. 2020
 # https://bmcmedicine.biomedcentral.com/articles/10.1186/s12916-020-01698-4#additional-information
 PARAMETER_DEFAULTS = {
-    'beta': 0.0791, # transmission rate -> For Covid, 0.0791 correponding to R0=3.18; later lockdown estimation: .0806
-    'eps': 1/3.7, # latency -> For Covid 3.7 days
-    'gamma': 1/2.3, # global (spontaneus) recovey rate -> For Covid 2.3 days
-    'spontan': False, # allow spontaneus recovery (for SIR and SEIR only, Covid uses this by default)
-    'gammatau': 0, # recovery rate for traced people (if 0, global gamma is used)
-    'taur': 0.1, 'taut': 0.1, # random tracing (testing) + contract-tracing rate which will be multiplied with no of traced contacts
-    'taut_two': -1., # contact-tracing rate for the second tracing network (if exists)
-    'delay_two': 2., # number of days of delay on second network (taken into account only if taut_two not set)
-    'noncomp': .02, # noncompliance rate (default: each day the chance of going out of isolation increases by 2%)
-    'noncomp_time': True, # whether the noncomp rate will be multiplied by time difference t_current - t_trace
-    'noncomp_after': 0, # period after which T becomes automatically N (nonisolating); 0 means disabled; 14 is standard quarantine
-    'netsize': 1000, 'k': 10, # net size, avg degree, 
-    'nettype': 'random', 'p': .05, # network wiring type and a rewire prob for various graph types
-    'overlap': .8, 'overlap_two': .4, # overlaps for dual nets (second is used only if dual == 2)
-    'zadd': 0, 'zrem': 5, # if no overlap given, these values are used for z_add and z_rem; z_add also informs overlap of additions
-    'zadd_two': 0, 'zrem_two': 5, # these are used only if dual == 2 and no overlap_two is given
-    'uptake': 1., 'maintain_overlap': True, 
-    'nnets': 1, 'niters': 1, 'nevents': 0, # running number of nets, iterations per net and events (if 0, until no more events)
-    'multip': 1, # 0 - no multiprocess, 1 - multiprocess nets, 2 - multiprocess iters, 3 - multiprocess nets and iters (half-half cpus)
-    'dual': 1, # 0 - tracing happens on same net as infection, 1 - one dual net for tracing, 2 - two dual nets for tracing
-    'isolate_s': True, # whether or not Susceptible people are isolated (Note: they will not get infected unless noncompliant)
-    'trace_once': False, # if True a node cannot become traced again after being noncompliant
-    'draw': 0, # 0 - no draw, 1 - draw at start/finish, 2 - draw and save finish
-    'draw_iter': 0., # if not 0 draw after each iteration and sleep for the specified time
-    'animate': False, # animates the disease progression, no other info will be printed
-    'draw_layout': 'spectral', # networkx drawing layout to use when drawing
-    'draw_fullname': False, # whether the legend will contain the full state name or not 
-    'seed': -1, 'netseed': -1, # seed of infection and exponentials, and the seed for network initializations
-    'summary_print': -1, # -1 -> full_summary never called; 0 -> no summary printing, 1 -> print summary as well
-    'summary_splits': 1000, # how many time splits to use for the epidemic summary
-    'r_window': 5, # number of days for Reff calculation
-    'separate_traced': True, # whether to have the Traced state separate from all the other states
-    'model': 'sir', # can be sir, seir or covid
-    'first_inf': 1., # number of nodes infected at the start of sim
-    'rem_orphans': False, # whether or not to remove orphans from the infection network (they will not move state)
-    'presample': 0, # number of stateless exponential presamples (if 0, no presampling)
-    'earlystop_margin': 0, # first_inf + earlystop_margin determines if a simulation is regarded as early stopped
-    'avg_without_earlystop': False, # whether alternative averages which have no early stopped iterations are to be computed
-    'efforts': False, # wehther efforts are to be computed
-    'trace_h': False, # whether to mark hospitalized as traced
-    
-    # dir: the exponential is sampled DIRECTLY from the function registered on the transition object
-    # each: the transition obj registers only the lambda rates, the exponential is sampled FOR EACH lambda with exp_sampler.py
-    # min: Gillespie's algorithm; the transition obj registers the lambda rates, ONLY the MINIMUM exponential is sampled based on sum
-    'sampling_type': 'dir',
-    
-    # COVID model specific parameters:
+    ### Network related parameters:
+    # net size & avg degree 
+    'netsize': 1000, 'k': 10,
+     # network wiring type and a rewire prob for various graph types
+    'nettype': 'random', 'p': .05,
+    # 0 - tracing happens on same net as infection, 1 - one dual net for tracing, 2 - two dual nets for tracing
+    'dual': 1,
+    # overlaps for tracing nets (second is used only if dual == 2)
+    'overlap': .8, 'overlap_two': .4,
+    # if no overlap given, tracing net has zadd edges added on random, and zrem removed
+    'zadd': 0, 'zrem': 5,
+     # similar as before but for dual == 2 and if no overlap_two given
+    'zadd_two': 0, 'zrem_two': 5,
+    # maximum percentage of nodes with at least 1 link (adoption rate)
+    'uptake': 1.,
+    # if maintain_overlap True, then the generator will try to accommodate both the uptake and the overlap
+    'maintain_overlap': False,
+
+    ### Compartmental model parameters:
+    # can be sir, seir or covid
+    'model': 'sir',
+     # number of nodes infected at the start of sim
+    'first_inf': 1.,
+    # whether to have the Traced status separate from the infection states
+    'separate_traced': True,
+    # whether Susceptible people are isolated 
+    # if True and 'traced', they can't get infected unless noncompliant
+    'isolate_s': True,
+    # whether to mark hospitalized as traced
+    'trace_h': False,
+    # if True a node cannot become traced again after being noncompliant
+    'trace_once': False,
+
+    ### Disease-specific parameters that are common for multiple models:
+    # transmission rate -> For Covid, 0.0791 correponding to R0=3.18
+    'beta': 0.0791,
+    # latency -> For Covid 3.7 days
+    'eps': 1/3.7,
+    # global (spontaneus) recovey rate -> For Covid 2.3 days
+    'gamma': 1/2.3,
+     # allow spontaneus recovery (for SIR and SEIR only, for Covid always true)
+    'spontan': False,
+    # recovery rate for traced people (if 0, global gamma is used)
+    'gammatau': 0,
+
+    ### COVID model specific parameters:
     'pa': 0.2, # probability of being asymptomatic (could also be 0.5)
     'rel_beta': .5, # relative infectiousness of Ip/Ia compared to Is (Imperial paper + Medrxiv paper)
     'rel_taur': .8, # relative random tracing (testing) rate of Ia compared to Is 
@@ -74,6 +73,66 @@ PARAMETER_DEFAULTS = {
     'lamdahr': [0, .083, .033], # If hospitalized, daily rate entering in R based on age category
     'lamdahd': [0, .0031, .0155], # If hospitalized, daily rate entering in D based on age category
     'group': 1, # Age-group; Can be 0 - children, 1 - adults, 2 - senior
+
+    ### Tracing parameters:
+    # testing (random tracing) rate
+    'taur': 0.1,
+    # contact-tracing rates for first & second tracing networks (if exists)
+    'taut': 0.1,'taut_two': -1.,
+    # number of days of delay on second tracing network compared to first one
+    # this is taken into account only if taut_two==-1
+    'delay_two': 2.,
+    # noncompliance rate
+    # each day the chance of going out of isolation increases by x%
+    'noncomp': .01,
+    # whether the noncomp rate gets multiplied by time difference t_current - t_trace
+    'noncomp_time': True,
+    # period after which T becomes automatically N (nonisolating)
+    # 0 means disabled; 14 is standard quarantine
+    'noncomp_after': 0,
+
+    ### Simulation controlling parameters
+    # running number of nets, iterations per net and events for each
+    # nevents == 0, run until no more events
+    'nnets': 1, 'niters': 1, 'nevents': 0,
+     # seed of infection and exponentials, and the seed for network initializations
+    'seed': -1, 'netseed': -1,
+    # 0 - no multiprocess, 1 - multiprocess nets, 2 - multiprocess iters, 3 - multiprocess nets and iters (half-half cpus)
+    'multip': 1,
+    # dir: the exponential is sampled DIRECTLY from the function registered on the transition object
+    # each: the transition obj registers only the lambda rates, the exponential is sampled FOR EACH lambda with exp_sampler.py
+    # min: Gillespie's algorithm; the transition obj registers the lambda rates, ONLY the MINIMUM exponential is sampled based on sum
+    'sampling_type': 'dir',
+    # number of stateless exponential presamples (if 0, no presampling)
+    'presample': 0, 
+    # whether or not to remove orphans from the infection network (they will not move state)
+    'rem_orphans': False,
+    # wehther efforts are to be computed for each type of tracing (random+contact)
+    'efforts': False,
+
+    ### Summary-related parameters
+    # -1 -> full_summary never called; 0 -> no summary printing, 1 -> print summary as well
+    'summary_print': -1,
+    # how many time splits to use for the epidemic summary
+    'summary_splits': 1000,
+    # number of days for Reff calculation
+    'r_window': 5, 
+    # first_inf + earlystop_margin determines if a simulation is regarded as early stopped
+    'earlystop_margin': 0,
+    # whether alternative averages which have no early stopped iterations are to be computed
+    'avg_without_earlystop': False,
+
+    ### Drawing-related parameters:
+    # 0 - no draw, 1 - draw at start/finish, 2 - draw and save figure at finish
+    'draw': 0,
+    # if not 0 draw after each iteration and sleep for this long
+    'draw_iter': 0.,
+    # animates the disease progression, no other info will be printed
+    'animate': False,
+     # networkx drawing layout to use when drawing
+    'draw_layout': 'spectral',
+    # whether the legend will contain the full state name or not
+    'draw_fullname': False,
 }
 
     

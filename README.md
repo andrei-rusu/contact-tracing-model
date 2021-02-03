@@ -1,77 +1,170 @@
-# contact-tracing-model
+# SEIR-T: Model contact tracing for COVID-19
 
-SEIR-T model
+A multi-site mean-field model for studying the effects of different "test and trace" strategies on the spread of COVID-19. The infection spreads over the full network of contacts, whereas each <b> type </b> of tracing gets conducted over different subsets of that network. (i.e. one for manual and one for digital tracing).
 
-Dual and triad network topologies for modeling the effects of different "test and trace" strategies on the spread of COVID-19.
+Link to original study: Andrei Rusu et al., 2020 https://www.dropbox.com/s/ozdbdlw0351895p/Contact_Tracing.pdf
 
-SEIR-T uses a compartmental formulation that describes viral transmissions and contact tracing in terms of network-defined neighborhoods.
+SEIR-T uses a compartmental formulation that describes viral transmissions and contact tracing in terms of network-defined neighborhoods:
 
-Link to the corresponding paper which documents the model (Andrei et al., 2020): 
-https://sotonac-my.sharepoint.com/:b:/g/personal/ar5g15_soton_ac_uk/ESjnbcDA0thLtN4Hr68rCiIBE8q45dcCW_56rsjIavA0iQ?e=5ElCY2
+<p align="middle">
 
-Running example:
-    python run.py \
+  <video id="home1" width="500" height="300" controls="controls" preload="metadata"> 
+        <source type="video/mp4" src="https://www.dropbox.com/s/bxirlp1271teadg/nct.mp4?raw=1#t=0.1" /> 
+    </video>
+
+  <video id="home2" width="500" height="300" controls="controls" preload="metadata"> 
+        <source type="video/mp4" src="https://www.dropbox.com/s/3o0a63ivj8gk82c/ct.mp4?raw=1#t=0.1" /> 
+  </video> 
+</p></br>
+
+
+
+
+
+<h2>Running example:</h2>
+
+```
+python run.py \
     --netsize 1000 \
     --k 10 \
+    --p .2 \
+    --nettype "ws" \
     --multip 3 \
-    --model 'covid' \
-    --dual 1 \
-    --overlap 1 \
+    --model "covid" \
+    --dual 2 \
     --uptake .5 \
+    --overlap .7 \
     --maintain_overlap False \
     --nnets 4 \
     --niters 4 \
     --separate_traced True \
+    --avg_without_earlystop True \
+    --trace_once False \
+    --first_inf 1 \
+    --earlystop_margin 2 \
+    --rem_orphans True \
     --noncomp 0 \
+    --presample 100000 \
+    --pa .2 \
     --taut .1 \
-    --taur .1 > file.out
+    --taur .1 \
+    --sampling_type "min" \
+    --netseed 31 \
+    --seed 11 > file.out
+```
 
-Alternatively, call from a Notebook run.run_mock(**kwargs).
+The API supports Python calls from Jupyter Notebooks with the same arguments:
+```python
+import run
+kwargs = {
+    'netsize':30, 'nettype':'ws', 'k':5, 'model':'covid', 'dual':2, 
+    'uptake':.5, 'overlap':.7, 'taut':.1, 'taur':.1, 'animate':True,
+}
+run.run_mock(**kwargs)
+```
 
-Parameter descriptions:
-<ul>
-<li>'beta': 0.0791, # transmission rate -> For Covid, 0.0791 correponding to R0=3.18; later lockdown estimation: .0806</li>
-<li>    'eps': 1/3.7, # latency -> For Covid 3.7 days</li>
-<li>    'gamma': 1/2.3, # global (spontaneus) recovey rate -> For Covid 2.3 days</li>
-<li>    'spontan': False, # allow spontaneus recovery (for SIR and SEIR only, Covid uses this by default)</li>
-<li>    'gammatau': 0, # recovery rate for traced people (if 0, global gamma is used)</li>
-<li>    'taur': 0.1, 'taut': 0.1, # random tracing (testing) + contract-tracing rate which will be multiplied with no of traced contacts</li>
-<li>    'taut_two': 0.1, # contract-tracing rate for the second tracing network (if exists)</li>
-<li>    'noncomp': .02, # noncompliance rate (default: each day the chance of going out of isolation increases by 2%)</li>
-<li>    'noncomp_time': True, # whether the noncomp rate will be multiplied by time difference t_current - t_trace</li>
-<li>    'noncomp_after': 0, # period after which T becomes automatically N (nonisolating); 0 means disabled; 14 is standard quarantine</li>
-<li>    'netsize': 1000, 'k': 10, # net size, avg degree, </li>
-<li>    'nettype': 'random', 'p': .05, # network wiring type and a rewire prob for various graph types</li>
-<li>    'overlap': .8, 'overlap_two': .4, # overlaps for dual nets (second is used only if dual == 2)</li>
-<li>    'zadd': 0, 'zrem': 5, # if no overlap given, these values are used for z_add and z_rem; z_add also informs overlap of additions</li>
-<li>    'zadd_two': 0, 'zrem_two': 5, # these are used only if dual == 2 and no overlap_manual is given</li>
-<li>    'uptake': 1., 'maintain_overlap': True, </li>
-<li>    'nnets': 1, 'niters': 1, 'nevents': 0, # running number of nets, iterations per net and events (if 0, until no more events)</li>
-<li>    'multip': 1, # 0 - no multiprocess, 1 - multiprocess nets, 2 - multiprocess iters, 3 - multiprocess nets and iters (half-half cpus)</li>
-<li>    'dual': 1, # 0 - tracing happens on same net as infection, 1 - one dual net for tracing, 2 - two dual nets for tracing</li>
-<li>    'isolate_s': True, # whether or not Susceptible people are isolated (Note: they will not get infected unless noncompliant)</li>
-<li>    'trace_once': False, # if True a node cannot become traced again after being noncompliant</li>
-<li>    'draw': False, 'draw_iter': False, # whether to draw at start/finish of simulation or at after each event</li>
-<li>    'draw_layout': 'spectral', # networkx drawing layout to use when drawing</li>
-<li>    'seed': -1, 'netseed': -1, # seed of infection and exponentials, and the seed for network initializations</li>
-<li>    'summary_print': -1, # None -> full_summary never called; False -> no summary printing, True -> print summary as well</li>
-<li>    'summary_splits': 1000, # how many time splits to use for the epidemic summary</li>
-<li>    'r_window': 7, # number of days for Reff calculation</li>
-<li>    'separate_traced': False, # whether to have the Traced state separate from all the other states</li>
-<li>    'model': 'sir', # can be sir, seir or covid</li>
-<li>    'first_inf': 1., # number of nodes infected at the start of sim</li>
-<li>    'rem_orphans': False, # whether or not to remove orphans from the infection network (they will not move state)</li>
-<li>    'presample': 0, # number of stateless exponential presamples (if 0, no presampling)</li>
-<li>    'earlystop_margin': 0,</li>
-<li>    'avg_without_earlystop': False, # whether alternative averages which have no early stopped iterations are to be computed</li>
-<li>    'efforts': False,</li>
-<li>    # COVID model specific parameters:</li>
-<li>    'pa': 0.2, # probability of being asymptomatic (could also be 0.5)</li>
-<li>    'rel_beta': .5, # relative infectiousness of Ip/Ia compared to Is (Imperial paper + Medrxiv paper)</li>
-<li>    'rel_taur': .8, # relative random tracing (testing) rate of Ia compared to Is </li>
-<li>    'miup': 1/1.5, # duration of prodromal phase</li>
-<li>    'ph': [0, 0.1, 0.2], # probability of being hospitalized (i.e. having severe symptoms Pss) based on age category </li>
-<li>    'lamdahr': [0, .083, .033], # If hospitalized, daily rate entering in R based on age category</li>
-<li>    'lamdahd': [0, .0031, .0155], # If hospitalized, daily rate entering in D based on age category</li>
-<li>    'group': 1, # Age-group; Can be 0 - children, 1 - adults, 2 - senior</li>
-</ul>
+<br/>
+<h2>Parameter descriptions:</h2>
+
+```python
+# transmission rate -> For Covid, 0.0791 correponding to R0=3.18
+'beta': 0.0791,
+# latency -> For Covid 3.7 days
+'eps': 1/3.7,
+# global (spontaneus) recovey rate -> For Covid 2.3 days
+'gamma': 1/2.3,
+ # allow spontaneus recovery (for SIR and SEIR only, Covid uses this by default)
+'spontan': False,
+# recovery rate for traced people (if 0, global gamma is used)
+'gammatau': 0,
+# testing & contract-tracing rate which will be multiplied with no. of traced contacts
+'taur': 0.1, 'taut': 0.1,
+# contact-tracing rate for the second tracing network (if exists)
+'taut_two': -1.,
+# number of days of delay on second tracing network compared to first
+# this is taken into account only if taut_two==-1
+'delay_two': 2.,
+# noncompliance rate
+# each day the chance of going out of isolation increases by x%
+'noncomp': .01,
+# whether the noncomp rate gets multiplied by time difference t_current - t_trace
+'noncomp_time': True,
+# period after which T becomes automatically N (nonisolating)
+# 0 means disabled; 14 is standard quarantine
+'noncomp_after': 0,
+# net size & avg degree 
+'netsize': 1000, 'k': 10,
+ # network wiring type and a rewire prob for various graph types
+'nettype': 'random', 'p': .05,
+# overlaps for dual nets (second is used only if dual == 2)
+'overlap': .8, 'overlap_two': .4,
+# if no overlap given, tracing net has zadd edges added on random, and zrem removed
+'zadd': 0, 'zrem': 5,
+ # these are used only if dual == 2 and no overlap_two is given
+'zadd_two': 0, 'zrem_two': 5,
+# maximum percentage of nodes with at least 1 link (adoption rate)
+'uptake': 1.,
+# if maintain_overlap True, then the generator will try to accommodate both the uptake and the overlap
+ 'maintain_overlap': False,
+# running number of nets, iterations per net and events for each
+# nevents == 0, run until no more events
+'nnets': 1, 'niters': 1, 'nevents': 0,
+# 0 - no multiprocess, 1 - multiprocess nets, 2 - multiprocess iters, 3 - multiprocess nets and iters (half-half cpus)
+'multip': 1,
+# 0 - tracing happens on same net as infection, 1 - one dual net for tracing, 2 - two dual nets for tracing
+'dual': 1,
+# whether Susceptible people are isolated 
+# if True and 'traced', they can't get infected unless noncompliant
+'isolate_s': True,
+# if True a node cannot become traced again after being noncompliant
+'trace_once': False,
+ # seed of infection and exponentials, and the seed for network initializations
+'seed': -1, 'netseed': -1,
+# -1 -> full_summary never called; 0 -> no summary printing, 1 -> print summary as well
+'summary_print': -1,
+# how many time splits to use for the epidemic summary
+'summary_splits': 1000,
+# number of days for Reff calculation
+'r_window': 5, 
+# whether to have the Traced status separate from the infection states
+'separate_traced': True, 
+# can be sir, seir or covid
+'model': 'sir',
+ # number of nodes infected at the start of sim
+'first_inf': 1.,
+# first_inf + earlystop_margin determines if a simulation is regarded as early stopped
+'earlystop_margin': 0, 
+# whether or not to remove orphans from the infection network (they will not move state)
+'rem_orphans': False,
+# number of stateless exponential presamples (if 0, no presampling)
+'presample': 0, 
+
+# whether alternative averages which have no early stopped iterations are to be computed
+'avg_without_earlystop': False,
+# wehther efforts are to be computed for each type of tracing (random+contact)
+'efforts': False, 
+'trace_h': False, # whether to mark hospitalized as traced
+# dir: the exponential is sampled DIRECTLY from the function registered on the transition object
+# each: the transition obj registers only the lambda rates, the exponential is sampled FOR EACH lambda with exp_sampler.py
+# min: Gillespie's algorithm; the transition obj registers the lambda rates, ONLY the MINIMUM exponential is sampled based on sum
+'sampling_type': 'dir',
+
+# Drawing-related parameters:
+# 0 - no draw, 1 - draw at start/finish, 2 - draw and save figure at finish
+'draw': 0,
+# if not 0 draw after each iteration and sleep for this long
+'draw_iter': 0., 
+'animate': False, # animates the disease progression, no other info will be printed
+'draw_layout': 'spectral', # networkx drawing layout to use when drawing
+'draw_fullname': False, # whether the legend will contain the full state name or not 
+
+# COVID model specific parameters:
+'pa': 0.2, # probability of being asymptomatic (could also be 0.5)
+'rel_beta': .5, # relative infectiousness of Ip/Ia compared to Is (Imperial paper + Medrxiv paper)
+'rel_taur': .8, # relative random tracing (testing) rate of Ia compared to Is 
+'miup': 1/1.5, # duration of prodromal phase
+'ph': [0, 0.1, 0.2], # probability of being hospitalized (i.e. having severe symptoms Pss) based on age category 
+'lamdahr': [0, .083, .033], # If hospitalized, daily rate entering in R based on age category
+'lamdahd': [0, .0031, .0155], # If hospitalized, daily rate entering in D based on age category
+'group': 1, # Age-group; Can be 0 - children, 1 - adults, 2 - senior
+```
