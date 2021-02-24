@@ -125,7 +125,7 @@ PARAMETER_DEFAULTS = {
     ### Drawing-related parameters:
     # 0 - no draw, 1 - draw at start/finish, 2 - draw and save figure at finish
     'draw': 0,
-    # if not 0 draw after each iteration and sleep for this long
+    # if not 0, draw after each iteration and sleep for this long
     'draw_iter': 0.,
     # animates the disease progression, no other info will be printed
     'animate': False,

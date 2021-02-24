@@ -174,8 +174,9 @@ class EngineDual(Engine):
             # we make plots for the true network + all the dual networks
             ax[0].set_title('True Network', fontsize=14)
             true_net.draw(layout_type=args.draw_layout, seed=args.netseed, show=False, ax=ax[0])
-            ax[1].set_title('Digital Tracing Network', fontsize=14)
+            ax[1].set_title('Contact Tracing Network', fontsize=14)
             if dual == 2:
+                ax[1].set_title('Digital Tracing Network', fontsize=14)
                 ax[-1].set_title('Manual Tracing Network', fontsize=14)
             know_net.draw(pos=true_net.pos, show=False, ax=ax[1:], full_name=args.draw_fullname, model=args.model)
             display.display(plt.gcf())
@@ -367,8 +368,9 @@ class EngineDual(Engine):
                 clear_axis(ax)
                 ax[0].set_title('True Network', fontsize=14)
                 true_net.draw(layout_type=args.draw_layout, seed=args.netseed, show=False, ax=ax[0])
-                ax[1].set_title('Digital Tracing Network', fontsize=14)
+                ax[1].set_title('Contact Tracing Network', fontsize=14)
                 if dual == 2:
+                    ax[1].set_title('Digital Tracing Network', fontsize=14)
                     ax[-1].set_title('Manual Tracing Network', fontsize=14)
                 know_net.draw(pos=true_net.pos, show=False, ax=ax[1:], full_name=args.draw_fullname, model=args.model)
                 
@@ -391,8 +393,9 @@ class EngineDual(Engine):
             clear_axis(ax)
             ax[0].set_title('True Network', fontsize=14)
             true_net.draw(show=False, ax=ax[0])
-            ax[1].set_title('Digital Tracing Network', fontsize=14)
+            ax[1].set_title('Contact Tracing Network', fontsize=14)
             if dual == 2:
+                ax[1].set_title('Digital Tracing Network', fontsize=14)
                 ax[-1].set_title('Manual Tracing Network', fontsize=14)
             know_net.draw(pos=true_net.pos, show=False, ax=ax[1:], full_name=args.draw_fullname, model=args.model)
             
@@ -401,7 +404,7 @@ class EngineDual(Engine):
                 display.clear_output(wait=True)
                 
             if draw == 2:
-                plt.savefig('fig/network-' + str(true_net.inet) + '.pdf', format='pdf', bbox_inches = 'tight')
+                plt.savefig('fig/network-viz/network-' + str(true_net.inet) + '.pdf', format='pdf', bbox_inches = 'tight')
             
         if not animate:
             plt.close()
@@ -657,7 +660,7 @@ class EngineOne(Engine):
                 display.clear_output(wait=True)
                 
             if draw == 2:
-                plt.savefig('fig/network-' + str(true_net.inet) + '.pdf', format='pdf', bbox_inches = 'tight')
+                plt.savefig('fig/network-viz/network-' + str(true_net.inet) + '.pdf', format='pdf', bbox_inches = 'tight')
             
         return result
 
