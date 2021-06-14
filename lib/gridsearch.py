@@ -3,7 +3,7 @@ import numpy as np
 from sklearn.model_selection import ParameterGrid
 
 
-pa_vals = [.2]
+pa_vals = [.2,.5]
 tau_vals = np.array([.05, .1, .2, .5])
 GRID = [
     # When taut = 0, it does not matter whether its dual/triad, or the degree of overlap/uptake (so make them 1)
@@ -14,7 +14,7 @@ GRID = [
      'overlap': [1],
      'dual': [1],
     },
-    # When taut != 0, try all overlaps or uptakes
+    # When taut != 0 and dual=1 scenario, try all overlaps OR uptakes
     {'uptake': np.linspace(.1, 1, 7),
      'taut': [10],
      'taur': tau_vals,
@@ -22,7 +22,7 @@ GRID = [
      'overlap': [1], # [.05, .1, .3, .5, 1],
      'dual': [1],
     },
-    # When taut != 0, try all overlaps or uptakes
+    # When taut != 0 and dual=2 (triad) scenario, all uptakes will be used for the first net, and overlaps for second net
     {'uptake': np.linspace(.1, 1, 7),
      'taut': [10],
      'taur': tau_vals,

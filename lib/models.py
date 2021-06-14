@@ -24,7 +24,7 @@ def populate_tracing_trans(trans_know, args, exp):
     noncomp = args.noncomp
     # if no noncompliace rate is chosen, separate_traced is inactive or testing is disabled, skip transition T->N
     if noncomp and args.separate_traced and args.taur:
-        if args.noncomp_time:
+        if args.noncomp_dependtime:
             noncomp_func = get_stateful_sampling_func( \
                 'expFactorTimesTimeDif', lamda=noncomp, exp=exp)
         else:
@@ -32,20 +32,16 @@ def populate_tracing_trans(trans_know, args, exp):
         add_trans(trans_know, 'T', 'N', noncomp_func)    
     
 def sir(trans_true, args, exp):
-    # local vars for efficiency
-    beta = args.beta
     # add infection rate
-    add_trans(trans_true, 'S', 'I', get_stateful_sampling_func('expFactorTimesCount', exp=exp, state='I', lamda=beta))
+    add_trans(trans_true, 'S', 'I', get_stateful_sampling_func('expFactorTimesCount', exp=exp, state='I', lamda=args.beta))
     
     if args.spontan:
         # allow spontaneuous recovery (without tracing) with rate gamma
         add_trans(trans_true, 'I', 'R', get_stateless_sampling_func(args.gamma, exp))
     
 def seir(trans_true, args, exp):
-    # local vars for efficiency
-    beta = args.beta
     # Infections spread based on true_net connections depending on nid
-    add_trans(trans_true, 'S', 'E', get_stateful_sampling_func('expFactorTimesCount', exp=exp, state='I', lamda=beta))
+    add_trans(trans_true, 'S', 'E', get_stateful_sampling_func('expFactorTimesCount', exp=exp, state='I', lamda=args.beta))
 
     # Next transition is network independent (at rate eps) but we keep the same API for sampling at get_next_event time
     add_trans(trans_true, 'E', 'I', get_stateless_sampling_func(args.eps, exp))
@@ -55,15 +51,12 @@ def seir(trans_true, args, exp):
         add_trans(trans_true, 'I', 'R', get_stateless_sampling_func(args.gamma, exp))    
     
 def covid(trans_true, args, exp):
-    # local vars for efficiency
-    beta = args.beta
-    rel_beta = args.rel_beta
     # mark args.spontan as always True for Covid
     args.spontan = True
     # Infections spread based on true_net connections depending on nid
     add_trans(trans_true, 'S', 'E', get_stateful_sampling_func(
-              'expFactorTimesCountMultiState', states=['Is'], lamda=beta, exp=exp, 
-                                            rel_states=['I', 'Ia'], rel=rel_beta))
+              'expFactorTimesCountMultiState', states=['Is'], lamda=args.beta, exp=exp, 
+                                            rel_states=['I', 'Ia'], rel=args.rel_beta))
     
     # Transition to presymp with latency epsilon (we denote I = Ip !!!)
     add_trans(trans_true, 'E', 'I', get_stateless_sampling_func(args.eps, exp))

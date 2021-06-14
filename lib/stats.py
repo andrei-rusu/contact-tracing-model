@@ -37,7 +37,8 @@ class StatsProcessor():
         This produces a full summary of the epidemic simulations
         
         splits : number of time intervals
-        printit : whether to print the summary to stdout
+        printit : whether to print the summary to stdout 
+            0=no print, 1=print w/out the full predef network (if any), 2=print all, incl full predef network (if any)
         """
         # local for efficiency
         args = self.args
@@ -60,7 +61,7 @@ class StatsProcessor():
         summary['args']['r0'] = contacts_scaler * args.beta / infectious_time_rate
         
         if args.dual:
-            # If dual=True, true overlap is EITHER the inputted overlap OR (k-zrem)/(k-zadd)
+            # If dual=True, true overlap is EITHER the inputted overlap OR (k-zrem)/(k+zadd)
             summary['args']['true-overlap'] = \
                 ut.get_overlap_for_z(args.k, args.zadd, args.zrem) if args.overlap is None else args.overlap
         else:
@@ -248,7 +249,8 @@ class StatsProcessor():
             current['average-total-noncompliant'] = stats_for_timed_parameters[12]
             current['average-overall-noncompliant'] = stats_for_laststamp[12]
             
-            print(current['average-overall-traced'])
+            # Good moment for quickly debugging how well tracing fared overall
+#             print('Overall traced: ', current['average-overall-traced'])
             
             # This is based on Tsimring and Huerta 2002
             current['r-trace'] = contacts_scaler * args.beta / (infectious_time_rate + args.beta + args.taur * \
@@ -258,6 +260,9 @@ class StatsProcessor():
             current['active-growth'] = stats_for_active_growth
 
         if printit:
+            # if printit is 1 and nettype is a predefined supplied network (i.e. not a str), the value in the summary dict will be overwritten
+            if printit == 1 and not isinstance(summary['args']['nettype'], str):
+                summary['args']['nettype'] = 'predefined'
             print(json.dumps(summary, cls=ut.NumpyEncoder))
 
         return summary

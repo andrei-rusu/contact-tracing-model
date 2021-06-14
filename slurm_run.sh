@@ -46,7 +46,7 @@ python run.py \
     --niters 15 \
     --separate_traced True \
     --avg_without_earlystop True \
-    --trace_once False \
+    --trace_after 1 \
     --first_inf 1 \
     --earlystop_margin 2 \
     --rem_orphans True \

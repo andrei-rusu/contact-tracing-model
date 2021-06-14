@@ -10,11 +10,11 @@ class SimEvent(Event):
 
 class Simulation():
     
-    def __init__(self, net, trans, isolate_S=True, trace_once=False, already_exp=True, presample=1000):
+    def __init__(self, net, trans, isolate_s=True, trace_after=14, already_exp=True, presample=1000, **kwargs):
         self.net = net
         self.trans = trans
-        self.isolate_S = isolate_S
-        self.trace_once = trace_once
+        self.isolate_S = isolate_s
+        self.trace_after = trace_after
         self.time = 0
         # Create Adapter to allow the rate returned by rate_func to be either a base rate (which shall be exponentially sampled) 
         # or an exponential rate directly (which shall be left unchanged)
@@ -86,11 +86,12 @@ class Simulation():
         trans = self.trans
         time = self.time
         sampling = self.sampling
-        trace_once = self.trace_once
+        trace_after = self.trace_after
         node_list = net.node_list
         node_traced = net.node_traced
         node_states = net.node_states
         traced_time = net.traced_time
+        noncomp_time = net.noncomp_time
         
         traceable_states = ['S', 'E', 'I', 'Ia', 'Is']
         traced_state = 'T'
@@ -122,9 +123,10 @@ class Simulation():
         traced_inf = []
         for nid in node_list:
             # check if there is any tracing function instantiated before collecting non-traced points
-            # Note: tracing multiple times can be disallowed through trace_once
-            if trace_funcs and not node_traced[nid] and (not trace_once or not nid in traced_time) \
-            and node_states[nid] in trace_funcs:
+            # if trace_after == -1 -> trace a node only if its NOT present in traced_time: aka never traced or legally exited isolation
+            # if trace_after != -1 -> make tracing same node possible only after a time delay trace_after since becoming noncompliant N
+            if trace_funcs and not node_traced[nid] and node_states[nid] in trace_funcs \
+            and ((trace_after != -1 and time - noncomp_time.get(nid, time) > trace_after) or not nid in traced_time):
                 not_traced_inf.append(nid)
             # check if there is a noncompliance rate func before collecting the traced points that are actually "dangerous"
             elif noncompliance_rate_func and node_traced[nid] and node_states[nid] in trace_funcs:
@@ -163,7 +165,7 @@ class Simulation():
         return SimEvent(node=id_next, fr=from_next, to=to_next, time=best_time)
     
     
-    def get_next_event_sample_only_minimum(self, trans_know, tracing_nets):
+    def get_next_event_sample_only_minimum(self, trans_know, tracing_nets, **kwargs):
         """
         Sampling using Gillespie's Algorithm
         
@@ -180,12 +182,13 @@ class Simulation():
         trans = self.trans
         time = self.time
         sampling = self.sampling
-        trace_once = self.trace_once
+        trace_after = self.trace_after
         isolate_S = self.isolate_S
         node_list = net.node_list
         node_states = net.node_states
         node_traced = net.node_traced
         traced_time = net.traced_time
+        noncomp_time = net.noncomp_time
 
         traceable_states = ['S', 'E', 'I', 'Ia', 'Is']
         traced_state = 'T'
@@ -230,8 +233,10 @@ class Simulation():
                     lamdas[nid].append((rate_func(net, nid), to))
             
             # check if there is any possible tracing before updating the tracing possible transitions lists
-            if trace_funcs and not current_traced and (not trace_once or not nid in traced_time) \
-            and current_state in trace_funcs:
+            # if trace_after == -1 -> trace a node only if its NOT present in traced_time: aka never traced or legally exited isolation
+            # if trace_after != -1 -> make tracing same node possible only after a time delay trace_after since becoming noncompliant N
+            if trace_funcs and not current_traced and current_state in trace_funcs \
+            and ((trace_after != -1 and time - noncomp_time.get(nid, time) > trace_after) or not nid in traced_time):
                 for trace_net in tracing_nets:
                     lamdas[nid].append((trace_funcs[current_state](trace_net, nid), traced_state))
                 
@@ -273,11 +278,15 @@ class Simulation():
         self.last_updated = e.node
         
     def run_event_no_update(self, e):
-        self.net.change_state(e.node, e.to, update=False)
         self.time = e.time
         self.last_updated = e.node
         
-    def run_trace_event(self, e, to_traced=True):
-        self.net.change_traced_state_fast_update(e.node, to_traced, e.time)
+    def run_trace_event_for_trace_net(self, e, to_traced=True, legal_isolation_exit=False):
+        self.net.change_traced_state_update_tracing(e.node, to_traced, e.time, legal_isolation_exit)
         self.time = e.time
-        self.last_updated = e.node        
+        self.last_updated = e.node
+        
+    def run_trace_event_for_infect_net(self, e, to_traced=True, legal_isolation_exit=False):
+        self.net.change_traced_state_update_infectious(e.node, to_traced, e.time, legal_isolation_exit)
+        self.time = e.time
+        self.last_updated = e.node       

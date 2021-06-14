@@ -34,6 +34,7 @@ pa=${gridentry[3]}
 overlap=${gridentry[4]}
 dual=${gridentry[5]}
 
+# circumvent normal logic for taut if a value of 10 has been supplied -> check for 4 different values for taut
 if [ $taut -eq 10 ]
 then
     taut=(.05 .1 .2 .5)
@@ -62,7 +63,7 @@ python run.py \
     --niters 2 \
     --separate_traced True \
     --avg_without_earlystop True \
-    --trace_once False \
+    --trace_after 1 \
     --first_inf .1 \
     --earlystop_margin 0 \
     --rem_orphans True \

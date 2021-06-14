@@ -15,15 +15,20 @@ from lib.stats import StatsProcessor
 from lib.models import get_transitions_for_model, add_trans
 from lib.multirun_engine import EngineNet
 from lib.exp_sampler import ExpSampler
+from lib.data_utils import DataLoader
 
 # Covid infection-related parameters according to DiDomenico et al. 2020
 # https://bmcmedicine.biomedcentral.com/articles/10.1186/s12916-020-01698-4#additional-information
 PARAMETER_DEFAULTS = {
     ### Network related parameters:
-    # net size & avg degree 
-    'netsize': 1000, 'k': 10,
-     # network wiring type and a rewire prob for various graph types
-    'nettype': 'random', 'p': .05,
+     # network wiring type: this can either be a STR with the name of the random graph
+    # or a LIST of predefined networks for infection, tracing or both
+    # if its LIST, it can also contain lists of edges to be added dynamically (based on 'update_after' param)
+    'nettype': 'random',
+    # net size & avg degree & rewire prob for various graph types - these only have EFFECT IF nettype is a known net type given as STR
+    'netsize': 1000, 'k': 10, 'p': .05,
+    # controls whether edge weights matter and their normalising factor (only has effect when networks with edges have been provided)
+    'use_weights': False, 'K_factor': 10, # if K_factor = 0, no normalization of weights happens
     # 0 - tracing happens on same net as infection, 1 - one dual net for tracing, 2 - two dual nets for tracing
     'dual': 1,
     # overlaps for tracing nets (second is used only if dual == 2)
@@ -33,9 +38,11 @@ PARAMETER_DEFAULTS = {
      # similar as before but for dual == 2 and if no overlap_two given
     'zadd_two': 0, 'zrem_two': 5,
     # maximum percentage of nodes with at least 1 link (adoption rate)
-    'uptake': 1.,
+    'uptake': 1., 'uptake_two': 1.,
     # if maintain_overlap True, then the generator will try to accommodate both the uptake and the overlap
-    'maintain_overlap': False,
+    'maintain_overlap': False, 'maintain_overlap_two': True,
+    # update network after X days
+    'update_after': -1,
 
     ### Compartmental model parameters:
     # can be sir, seir or covid
@@ -43,14 +50,16 @@ PARAMETER_DEFAULTS = {
      # number of nodes infected at the start of sim
     'first_inf': 1.,
     # whether to have the Traced status separate from the infection states
+    # Note if this is disabled, much of the functionality surrounding noncompliance and self-isolation exit will not work
     'separate_traced': True,
     # whether Susceptible people are isolated 
     # if True and 'traced', they can't get infected unless noncompliant
     'isolate_s': True,
     # whether to mark hospitalized as traced
     'trace_h': False,
-    # if True a node cannot become traced again after being noncompliant
-    'trace_once': False,
+    # if -1 a node can become traced again only after exiting self-isolation
+    # not -1 a node can become traced again after this amount of time (in days) has elapsed after becoming ilegally N
+    'trace_after': 14,
 
     ### Disease-specific parameters that are common for multiple models:
     # transmission rate -> For Covid, 0.0791 correponding to R0=3.18
@@ -82,12 +91,12 @@ PARAMETER_DEFAULTS = {
     # number of days of delay on second tracing network compared to first one
     # this is taken into account only if taut_two==-1
     'delay_two': 2.,
-    # noncompliance rate
+    # noncompliance rate; Note this ONLY works for args.separate_traced=True
     # each day the chance of going out of isolation increases by x%
     'noncomp': .01,
     # whether the noncomp rate gets multiplied by time difference t_current - t_trace
-    'noncomp_time': True,
-    # period after which T becomes automatically N (nonisolating)
+    'noncomp_dependtime': True,
+    # period after which T becomes automatically N (nonisolating); Note this ONLY works for args.separate_traced=True
     # 0 means disabled; 14 is standard quarantine
     'noncomp_after': 0,
 
@@ -105,8 +114,10 @@ PARAMETER_DEFAULTS = {
     'sampling_type': 'dir',
     # number of stateless exponential presamples (if 0, no presampling)
     'presample': 0, 
-    # whether or not to remove orphans from the infection network (they will not move state)
+    # whether or not to remove orphans from the infection network (they will not move state on the infection net)
     'rem_orphans': False,
+    # if rem_orphans, noising of links can be calculated either based on the full node list or the active nonorphan list through this param
+    'active_based_noising': False,
     # wehther efforts are to be computed for each type of tracing (random+contact)
     'efforts': False,
 
@@ -130,7 +141,7 @@ PARAMETER_DEFAULTS = {
     # animates the disease progression, no other info will be printed
     'animate': False,
      # networkx drawing layout to use when drawing
-    'draw_layout': 'spectral',
+    'draw_layout': 'spring',
     # whether the legend will contain the full state name or not
     'draw_fullname': False,
 }
@@ -138,9 +149,20 @@ PARAMETER_DEFAULTS = {
     
 def main(args):
     
-    # Will hold stats for all simulations
-    stats = StatsProcessor(args)
+    ### This block of code is concerned with overwriting in a sensible manner args arguments, based on incomaptibilities and other criteria
     
+    # if the special 'socialevol' value was supplied for nettype, the argument will be overwritten with data coming from the Social Evolution dataset
+    # this is an easy hook point to supply own logic for loading custom datasets
+    if args.nettype == 'socialevol':
+        # allow update_after (used to indicate when dynamic edge updates happen) to influence the aggregation of data (either weekly or daily)
+        agg = 'W' if args.update_after > 3 else 'D'
+        # this effectively reads out the data file and does initial filtering and joining
+        loader = DataLoader(agg=agg, proxim_prob=None)
+        # supply to the args.nettype a dictionary, with keys being 'nid', 'Wi', 'Wt' (if which_tr>=0), and '0', '1', '2'
+        # corresponding to the timestamp of the specific dynamical edge update
+        # note that the code also supports custom tracing networks (in the SocialEvol example, choose which_tr>=0 for this scenario to take effect)
+        args.nettype = loader.get_edge_data_for_time(which_inf=0, which_tr=None)
+            
     # if animation of the infection progress is selected, disable all prints and enable both draw types
     if args.animate:
         ut.block_print()
@@ -153,18 +175,22 @@ def main(args):
     # the following step ensures that unselected seeds are turned to None
     if args.seed == -1: args.seed = None
     if args.netseed == -1: args.netseed = None
+        
     
-    # update number of first infected to reflect absolute values rather than percentage
-    # if args.first_inf >= 1 just turn the value into an int and use that as number of first infected
-    args.first_inf = int(args.first_inf) if args.first_inf >= 1 else int(args.first_inf * args.netsize)
-    # Random first infected across simulations - seed random locally
-    first_inf_nodes = random.Random(args.seed).sample(range(args.netsize), args.first_inf)
-    
-    # Boolean responsible for determining whether nInfectious = nInfected
-    no_exposed = (args.model == 'sir')
-    
-    # Whether the model is Covid or not
-    is_covid = (args.model == 'covid')
+    first_inf_nodes = None
+    # reflect in the netsize and the is_dynamic param the fact that we may have supplied a predefined infection network through args.nettype
+    if '0' in args.nettype:
+        # the graph is dynamic if any update excepting '0' exists
+        args.is_dynamic = (len(args.nettype) > 1)
+    # else branch is for random graph, which is not dynamic and for which we can use args.netsize to sample the first infected
+    else:
+        # update number of first infected to reflect absolute values rather than percentage
+        # if args.first_inf >= 1 just turn the value into an int and use that as number of first infected
+        args.first_inf = int(args.first_inf) if args.first_inf >= 1 else int(args.first_inf * args.netsize)
+        # Random first infected across simulations - seed random locally
+        first_inf_nodes = random.Random(args.seed).sample(range(args.netsize), args.first_inf)
+        # the random graph is not dynamic
+        args.is_dynamic = False
     
     # Turn off multiprocessing if only one net and one iteration selected
     if args.nnets == 1 and args.niters == 1: args.multip = 0
@@ -180,6 +206,18 @@ def main(args):
     if not np.isscalar(args.ph): args.ph = args.ph[args.group]
     if not np.isscalar(args.lamdahr): args.lamdahr = args.lamdahr[args.group]
     if not np.isscalar(args.lamdahd): args.lamdahd = args.lamdahd[args.group]
+    
+    # Finally, create the object which will hold stats for all simulations
+    # Parametrized by args -> will output the parameter configuration used to obtain these results
+    stats = StatsProcessor(args)
+    
+    
+    ### The logic of the simulations run follows here:
+    # Boolean responsible for determining whether nInfectious = nInfected
+    no_exposed = (args.model == 'sir')
+    
+    # Whether the model is Covid or not
+    is_covid = (args.model == 'covid')
 
     # if exp, then the transition dictionaries will hold functions which also compute the exponentials
     # otherwise, the functionals will only compute the base rates
@@ -205,7 +243,7 @@ def main(args):
         print('Running simulation with parameters:')
         ut.pvar(args.netsize, args.k, args.dual, args.model, owners=False)
         ut.pvar(args.overlap, args.uptake, args.maintain_overlap, owners=False)
-        ut.pvar(taut, taur, args.noncomp, args.noncomp_time, owners=False)
+        ut.pvar(taut, taur, args.noncomp, args.noncomp_dependtime, owners=False)
         print('=========================================================\n')
         
         # a random tracing rate is needed before any tracing can happen

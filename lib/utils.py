@@ -37,6 +37,11 @@ def enable_print():
     if saved_stdout:
         sys.stdout = saved_stdout
         
+def is_not_empty(lst):
+    """
+    Agnostic of None, Python Iterables and np.arrays
+    """
+    return lst is not None and getattr(lst, 'size', len(lst))
 
 def r_from_growth(growth, method='exp', t=7, mean=6.6, shape=1.87, inv_scale=0.28):
     """
@@ -99,11 +104,13 @@ def rand_pairs_excluding(n, m, to_exclude, seed=None):
 
 
 def get_stateless_sampling_func(lamda, exp=True):
+    "exp controls whether the rate is exponentially sampled at this stage or left as a base rate"
     if not exp:
         return (lambda net, nid, time=None: lamda)
     return (lambda net, nid, time=None: (-math.log(1. - random.random()) / lamda))
 
 def get_stateful_sampling_func(sampler_type='expFactorTimesCountMultiState', exp=True, **kwargs):
+    "exp controls whether the rate is exponentially sampled at this stage or left as a base rate"
     if not exp: 
         sampler_type += '_rate'
     func = globals()[sampler_type]
@@ -547,6 +554,8 @@ class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.ndarray):
             return obj.tolist()
+        elif isinstance(obj, set):
+            return list(obj)
         return json.JSONEncoder.default(self, obj)
     
 
