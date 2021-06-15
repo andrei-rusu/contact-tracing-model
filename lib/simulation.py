@@ -5,8 +5,10 @@ from collections import defaultdict
 from lib.utils import Event
 from lib.exp_sampler import get_sampler
 
+
 class SimEvent(Event):
     pass
+
 
 class Simulation():
     
@@ -103,10 +105,10 @@ class Simulation():
         try:
             trace_funcs = self.trace_funcs
             noncompliance_rate_func = self.noncompliance
-        except:
+        except AttributeError:
             # collect only the tracing function that actually exist in self.trans based on each traceable state
             trace_funcs = {
-                s : dict(trans[s])[traced_state] for s in traceable_states if traced_state in dict(trans[s])
+                s: dict(trans[s])[traced_state] for s in traceable_states if traced_state in dict(trans[s])
             }
             self.trace_funcs = trace_funcs
             
@@ -147,7 +149,7 @@ class Simulation():
                     to_next = traced_state
                     id_next = nid
         
-        # look for noncompliance events       
+        # look for noncompliance events
         for nid in traced_inf:
             # rate_func is a lambda expression waiting for a net and a node id
             rate = sampling(noncompliance_rate_func(net, nid, time))
@@ -200,10 +202,10 @@ class Simulation():
         try:
             trace_funcs = self.trace_funcs
             noncompliance_rate_func = self.noncompliance
-        except:
+        except AttributeError:
             # collect only the tracing function that actually exist in self.trans based on each traceable state
             trace_funcs = {
-                s : dict(trans_know[s])[traced_state] for s in traceable_states if traced_state in dict(trans_know[s])
+                s: dict(trans_know[s])[traced_state] for s in traceable_states if traced_state in dict(trans_know[s])
             }
             self.trace_funcs = trace_funcs
             
@@ -252,7 +254,7 @@ class Simulation():
             for rate, to in sublist:
                 sum_lamdas += rate
                 base_rates.append(rate)
-                nodes_and_trans.append((nid,to))
+                nodes_and_trans.append((nid, to))
         
         # this corresponds to no more event possible
         if not sum_lamdas:
@@ -289,4 +291,4 @@ class Simulation():
     def run_trace_event_for_infect_net(self, e, to_traced=True, legal_isolation_exit=False):
         self.net.change_traced_state_update_infectious(e.node, to_traced, e.time, legal_isolation_exit)
         self.time = e.time
-        self.last_updated = e.node       
+        self.last_updated = e.node

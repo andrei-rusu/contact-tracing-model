@@ -2,11 +2,13 @@ import numpy as np
 from random import random
 from math import log
 
+
 class ExpSampler():
     
     def get_next_sample(self, lamda):
         return -log(1. - random()) / lamda
 
+    
 class ExpSamplerPresample(dict):
     
     def __init__(self, size=1000):
@@ -20,6 +22,7 @@ class ExpSamplerPresample(dict):
             sample = next(self[lamda])
         finally:
             return sample
+
         
 class ExpSamplerPresampleScaleOne():
     

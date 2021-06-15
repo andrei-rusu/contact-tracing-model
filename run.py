@@ -1,42 +1,37 @@
 import argparse
 import random
 import numpy as np
-import multiprocessing
 
-from sys import stdout
-from tqdm import tqdm
 from multiprocessing import cpu_count
 from multiprocess.pool import Pool
-from joblib import Parallel, delayed
 
 from lib import utils as ut
     
 from lib.stats import StatsProcessor
 from lib.models import get_transitions_for_model, add_trans
 from lib.multirun_engine import EngineNet
-from lib.exp_sampler import ExpSampler
 from lib.data_utils import DataLoader
 
 # Covid infection-related parameters according to DiDomenico et al. 2020
 # https://bmcmedicine.biomedcentral.com/articles/10.1186/s12916-020-01698-4#additional-information
 PARAMETER_DEFAULTS = {
     ### Network related parameters:
-     # network wiring type: this can either be a STR with the name of the random graph
+    # network wiring type: this can either be a STR with the name of the random graph
     # or a LIST of predefined networks for infection, tracing or both
     # if its LIST, it can also contain lists of edges to be added dynamically (based on 'update_after' param)
     'nettype': 'random',
     # net size & avg degree & rewire prob for various graph types - these only have EFFECT IF nettype is a known net type given as STR
     'netsize': 1000, 'k': 10, 'p': .05,
     # controls whether edge weights matter and their normalising factor (only has effect when networks with edges have been provided)
-    'use_weights': False, 'K_factor': 10, # if K_factor = 0, no normalization of weights happens
+    'use_weights': False, 'K_factor': 10,  # if K_factor = 0, no normalization of weights happens
     # 0 - tracing happens on same net as infection, 1 - one dual net for tracing, 2 - two dual nets for tracing
     'dual': 1,
     # overlaps for tracing nets (second is used only if dual == 2)
     'overlap': .8, 'overlap_two': .4,
     # if no overlap given, tracing net has zadd edges added on random, and zrem removed
-    'zadd': 0, 'zrem': 5,
-     # similar as before but for dual == 2 and if no overlap_two given
-    'zadd_two': 0, 'zrem_two': 5,
+    'zadd': 0, 'zrem': 5, # if overlap is set, bool(zadd) is still used to infer whether we want to add random edges or only remove
+    # similar as before but for dual == 2 and if no overlap_two given
+    'zadd_two': 0, 'zrem_two': 5, # zadd_two fully replicates the functionality of zadd for the second dual net
     # maximum percentage of nodes with at least 1 link (adoption rate)
     'uptake': 1., 'uptake_two': 1.,
     # if maintain_overlap True, then the generator will try to accommodate both the uptake and the overlap
@@ -47,7 +42,7 @@ PARAMETER_DEFAULTS = {
     ### Compartmental model parameters:
     # can be sir, seir or covid
     'model': 'sir',
-     # number of nodes infected at the start of sim
+    # number of nodes infected at the start of sim
     'first_inf': 1.,
     # whether to have the Traced status separate from the infection states
     # Note if this is disabled, much of the functionality surrounding noncompliance and self-isolation exit will not work
@@ -68,7 +63,7 @@ PARAMETER_DEFAULTS = {
     'eps': 1/3.7,
     # global (spontaneus) recovey rate -> For Covid 2.3 days
     'gamma': 1/2.3,
-     # allow spontaneus recovery (for SIR and SEIR only, for Covid always true)
+    # allow spontaneus recovery (for SIR and SEIR only, for Covid always true)
     'spontan': False,
     # recovery rate for traced people (if 0, global gamma is used)
     'gammatau': 0,
@@ -87,7 +82,7 @@ PARAMETER_DEFAULTS = {
     # testing (random tracing) rate
     'taur': 0.1,
     # contact-tracing rates for first & second tracing networks (if exists)
-    'taut': 0.1,'taut_two': -1.,
+    'taut': 0.1, 'taut_two': -1.,
     # number of days of delay on second tracing network compared to first one
     # this is taken into account only if taut_two==-1
     'delay_two': 2.,
@@ -104,7 +99,7 @@ PARAMETER_DEFAULTS = {
     # running number of nets, iterations per net and events for each
     # nevents == 0, run until no more events
     'nnets': 1, 'niters': 1, 'nevents': 0,
-     # seed of infection and exponentials, and the seed for network initializations
+    # seed of infection and exponentials, and the seed for network initializations
     'seed': -1, 'netseed': -1,
     # 0 - no multiprocess, 1 - multiprocess nets, 2 - multiprocess iters, 3 - multiprocess nets and iters (half-half cpus)
     'multip': 1,
@@ -113,7 +108,7 @@ PARAMETER_DEFAULTS = {
     # min: Gillespie's algorithm; the transition obj registers the lambda rates, ONLY the MINIMUM exponential is sampled based on sum
     'sampling_type': 'dir',
     # number of stateless exponential presamples (if 0, no presampling)
-    'presample': 0, 
+    'presample': 0,
     # whether or not to remove orphans from the infection network (they will not move state on the infection net)
     'rem_orphans': False,
     # if rem_orphans, noising of links can be calculated either based on the full node list or the active nonorphan list through this param
@@ -127,7 +122,7 @@ PARAMETER_DEFAULTS = {
     # how many time splits to use for the epidemic summary
     'summary_splits': 1000,
     # number of days for Reff calculation
-    'r_window': 5, 
+    'r_window': 5,
     # first_inf + earlystop_margin determines if a simulation is regarded as early stopped
     'earlystop_margin': 0,
     # whether alternative averages which have no early stopped iterations are to be computed
@@ -140,7 +135,7 @@ PARAMETER_DEFAULTS = {
     'draw_iter': 0.,
     # animates the disease progression, no other info will be printed
     'animate': False,
-     # networkx drawing layout to use when drawing
+    # networkx drawing layout to use when drawing
     'draw_layout': 'spring',
     # whether the legend will contain the full state name or not
     'draw_fullname': False,
@@ -288,11 +283,11 @@ def main(args):
         net_range = range(nnets)
         # Multiprocessing object to use for each network initialization
         engine = EngineNet(args=args, first_inf_nodes=first_inf_nodes, no_exposed=no_exposed, is_covid=is_covid,
-                          tr_rate=taut, trans_true_items=trans_true_items, trans_know_items=trans_know_items)
+                           tr_rate=taut, trans_true_items=trans_true_items, trans_know_items=trans_know_items)
 
         if args.multip == 1:
             with Pool() as pool:
-                for inet, net_events in enumerate(ut.tqdm_redirect(pool.imap(engine, net_range), total=nnets, 
+                for inet, net_events in enumerate(ut.tqdm_redirect(pool.imap(engine, net_range), total=nnets,
                                                                 desc='Networks simulation progress')):
                     # Record sim results
                     stats.sim_summary[inet] = net_events
@@ -301,7 +296,7 @@ def main(args):
             # allocate half cpus to joblib for parallelizing simulations for different network initializations
             jobs = int(cpu_count() / 2)
             with ut.NoDaemonPool(jobs) as pool:
-                for inet, net_events in enumerate(ut.tqdm_redirect(pool.imap(engine, net_range), total=nnets, 
+                for inet, net_events in enumerate(ut.tqdm_redirect(pool.imap(engine, net_range), total=nnets,
                                                                 desc='Networks simulation progress')):
                     # Record sim results
                     stats.sim_summary[inet] = net_events
@@ -341,6 +336,7 @@ def run_mock(**kwargs):
         vars(argmock)[k] = kwargs.get(k, PARAMETER_DEFAULTS[k])
     
     return main(argmock)
+    
     
 if __name__ == '__main__':
     

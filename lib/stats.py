@@ -3,12 +3,13 @@ import numpy as np
 import json
 
 import lib.utils as ut
+from lib.utils import get_statistics
 
-from lib.utils import get_statistics, pad_2d_list_variable_len
 
 # Class to hold stats events
 class StatsEvent(ut.Event):
     pass
+
 
 class StatsProcessor():
     
@@ -30,7 +31,7 @@ class StatsProcessor():
         self.sim_summary = defaultdict(dict)
         
     def __getitem__(self, item):
-         return self.param_res[item]
+        return self.param_res[item]
         
     def full_summary(self, splits=1000, printit=0, r_window=7):
         """
@@ -49,12 +50,9 @@ class StatsProcessor():
         
         if args.model == 'covid':
             # total time of infectiousness (presymp + symp/asymp duration)
-            infectious_time_rate = 1 / (1/args.miup + 1/args.gamma) 
-            # infection rate of first infected (scaled by rel infectiousness since first infected are Ip)
-            initial_inf_rate = args.beta * args.rel_beta 
+            infectious_time_rate = 1 / (1/args.miup + 1/args.gamma)
         else: # in SIR and SEIR the base rates are directly indicative of the transmission/recovery
             infectious_time_rate = args.gamma
-            initial_inf_rate = args.beta
             
         contacts_scaler = args.netsize if args.nettype == 'complete' else args.k
         # basic R0 is scaled by the average number of contacts (since the transmission rate is also scaled)
@@ -146,7 +144,6 @@ class StatsProcessor():
                 for event in ser:
                     event_time = event.time
                     active_infected = event.nI + event.nE
-                    active_infectious = event.nI
                     active_hosp = event.nH
                     total_infected = event.totalInfected
                     # Block which will eventually calculate peak of infection
@@ -163,14 +160,14 @@ class StatsProcessor():
                         # growth_rate = new_cases / active_cases_past
                         growth.append(new_infections / reference_past_active_inf)
                         # active_growth_rate = active_cases_now / active_cases_past
-                        active_growth.append(active_infected /  reference_past_active_inf)
+                        active_growth.append(active_infected / reference_past_active_inf)
                         # change reference past measurement to use for the next Reff computation
                         reference_past_total_inf = total_infected
                         reference_past_time = event_time
-                        reference_past_active_inf = active_infected                            
+                        reference_past_active_inf = active_infected
                         
                 i_max.append(this_i_max)
-                i_timeofmax.append(this_i_timeofmax)                
+                i_timeofmax.append(this_i_timeofmax)
                 h_max.append(this_h_max)
                 h_timeofmax.append(this_h_timeofmax)
                 # note this will be a list of lists
@@ -196,10 +193,10 @@ class StatsProcessor():
             stats_for_timeofmax_hos = get_statistics(h_timeofmax, compute='mean+wo', avg_without_idx=without_idx)[0]
             
             # compute averages and other stats for growth rates
-            stats_for_growth = get_statistics(ut.pad_2d_list_variable_len(growth_series), \
-                                             compute='mean+wo', avg_without_idx=without_idx)
-            stats_for_active_growth = get_statistics(ut.pad_2d_list_variable_len(active_growth_series), \
+            stats_for_growth = get_statistics(ut.pad_2d_list_variable_len(growth_series),
                                               compute='mean+wo', avg_without_idx=without_idx)
+            stats_for_active_growth = get_statistics(ut.pad_2d_list_variable_len(active_growth_series),
+                                                     compute='mean+wo', avg_without_idx=without_idx)
             
             ##############
             # update averages dictionary for the current parameter value
@@ -229,7 +226,7 @@ class StatsProcessor():
             
             current['average-hospital'] = stats_for_timed_parameters[6]
             current['average-max-hospital'] = stats_for_max_hos
-            current['average-time-of-max-hospital'] = stats_for_max_hos
+            current['average-time-of-max-hospital'] = stats_for_timeofmax_hos
 
             current['average-total-hospital'] = stats_for_timed_parameters[7]
             current['average-overall-hospital'] = stats_for_laststamp[7]
@@ -253,8 +250,8 @@ class StatsProcessor():
 #             print('Overall traced: ', current['average-overall-traced'])
             
             # This is based on Tsimring and Huerta 2002
-            current['r-trace'] = contacts_scaler * args.beta / (infectious_time_rate + args.beta + args.taur * \
-                                        (1 + current['average-overall-traced']['mean']/current['average-overall-infected']['mean']))
+            current['r-trace'] = contacts_scaler * args.beta / (infectious_time_rate + args.beta + args.taur *
+                                                                (1 + current['average-overall-traced']['mean']/current['average-overall-infected']['mean']))
             # growth rates based on r_window
             current['growth'] = stats_for_growth
             current['active-growth'] = stats_for_active_growth

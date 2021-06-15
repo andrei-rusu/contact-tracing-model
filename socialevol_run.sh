@@ -5,9 +5,9 @@
 # - these can be overridden on the qsub command line
 #
 #SBATCH --job-name="Epidemic Grid Simulation"
-#SBATCH --ntasks-per-node=4     # Tasks per node
+#SBATCH --ntasks-per-node=20     # Tasks per node
 #SBATCH --nodes=1                # Number of nodes requested
-#SBATCH --time=00:10:00          # walltime
+#SBATCH --time=00:08:00          # walltime
 #SBATCH -o data/run/job_output/slurm/slurm-%A_%a.out        # STDOUT
 #SBATCH -e data/run/job_output/slurm/slurm-%A_%a.err        # STDERR
 
@@ -37,7 +37,7 @@ dual=${gridentry[5]}
 # circumvent normal logic for taut if a value of 10 has been supplied -> check for 4 different values for taut
 if [ $taut -eq 10 ]
 then
-    taut=(.05 .1 .2 .5)
+    taut=(.1 .2 .5 1.0 1.5 2.0)
 fi
 
 newfile="data/run/social_slurm/simresult_id"$SLURM_ARRAY_TASK_ID"_"$taut"_"$taur"_"$uptake".json"

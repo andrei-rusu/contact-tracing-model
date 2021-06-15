@@ -2,10 +2,9 @@ import networkx as nx
 import inspect
 import itertools
 import random
-from copy import deepcopy
 from sys import stderr
 
-from collections import Counter, defaultdict
+from collections import defaultdict
 from collections.abc import Iterable
 
 import numpy as np
@@ -14,7 +13,6 @@ import matplotlib.patches as mpatches
 
 from lib.utils import rand_pairs, rand_pairs_excluding, get_z_for_overlap, get_overlap_for_z
 from lib.simulation import Simulation
-from lib.exp_sampler import get_sampler
 from lib.utils import is_not_empty
 
 # in the state names we distinguish between I (SIR/SEIR) and Ip (Covid) only for drawing legend purposes
@@ -51,6 +49,7 @@ MODEL_TO_STATES = {
     'seir': ['S', 'E', 'I', 'R', 'T', 'N'],
     'covid': ['S', 'E', 'Ip', 'Ia', 'Is', 'H', 'D', 'R', 'T', 'N']
 }
+
 
 class Network(nx.Graph):
     
@@ -94,17 +93,20 @@ class Network(nx.Graph):
         return obj
     
     def copy_state_from(self, obj):
+        # instance primitives
         self.inet = obj.inet
         self.use_weights = obj.use_weights
+        self.norm_factor = obj.norm_factor
+        # lists or dict which will be SHARED between true net and dual net
         self.cont = obj.cont
         self.node_list = obj.node_list
         self.node_states = obj.node_states
         self.node_traced = obj.node_traced
-        # node_counts is the only reference not copied over from the original network
-        self.node_counts = defaultdict(lambda: defaultdict(float))
         self.traced_time = obj.traced_time
         self.noncomp_time = obj.noncomp_time
-        
+        # node_counts is the only reference not copied over from the original network
+        self.node_counts = defaultdict(lambda: defaultdict(float))
+
         
     def init_random(self, n=200, k=10, typ='random', p=.1, weighted=False, seed=None):
         # add n nodes to the network in the start state -> S
@@ -113,7 +115,7 @@ class Network(nx.Graph):
         p = k / n if p is None else p
                 
         links_to_create_dict = {
-             # Generate random pairs (edges) without replacement
+            # Generate random pairs (edges) without replacement
             'random': lambda: rand_pairs(n, int(n * k / 2), seed=seed),
             'binomial': lambda: list(nx.fast_gnp_random_graph(n, p, seed=seed).edges),
             # small-world network
@@ -127,7 +129,7 @@ class Network(nx.Graph):
         }
         try:
             links_to_create = links_to_create_dict[typ]()
-        except:
+        except KeyError:
             print("The inputted network type is not supported. Default to: random", file=stderr)
             links_to_create = links_to_create_dict['random']()
             
@@ -315,8 +317,7 @@ class Network(nx.Graph):
                     counts_nid[states[neigh]] += weight
                 # if we still track the traced time of neighbor, then it still counts for the tracing progression
                 if neigh in self.traced_time:
-                    counts_nid['T'] += weight                        
-
+                    counts_nid['T'] += weight
             
     def get_count(self, nid, state='I'):
         return self.node_counts[nid][state]
@@ -353,7 +354,6 @@ class Network(nx.Graph):
         # update the actual node state
         states[nid] = state
     
-    
     def change_traced_state_update_tracing(self, nid, to_traced, time_of_trace=None, legal_isolation_exit=False):
         """
         When using separate_traced, the T state is independent of all the other states and represented via a flag
@@ -386,8 +386,7 @@ class Network(nx.Graph):
                 neigh_counts = counts[neigh]
                 # final_count_val becomes the normalized weight of this edge if self.use_weight, with sign dictated by count_val
                 neigh_counts['T'] += count_val * data['weight'] if self.use_weights else count_val
-
-                    
+               
     def change_traced_state_update_infectious(self, nid, to_traced, time_of_trace=None, legal_isolation_exit=False):
         """
         When using separate_traced, the T state is independent of all the other states and represented via a flag
@@ -396,7 +395,7 @@ class Network(nx.Graph):
         Whichever of the above, depends directly on to_traced True/False
         - this is meant to be run only on the infection network AND only if the infection status of nid is Infectious
         """
-        inf_state = self.node_states[nid]  
+        inf_state = self.node_states[nid]
         if inf_state in ['I', 'Ia', 'Is']:
             # If this is a traced event, count_val = 1 | edge_weight, update time of tracing
             count_val = 1 if to_traced else -1
@@ -516,8 +515,8 @@ class Network(nx.Graph):
                 label = lambda state: state
                 plt.subplots_adjust(left=.1)
             # create color legend
-            plt.legend(handles=[mpatches.Patch(color=STATES_COLOR_MAP[state], label=label(state)) for state in model_states], \
-                       loc='upper left', prop={'size': 12}, bbox_to_anchor=(0,1), bbox_transform=plt.gcf().transFigure)
+            plt.legend(handles=[mpatches.Patch(color=STATES_COLOR_MAP[state], label=label(state)) for state in model_states],
+                       loc='upper left', prop={'size': 12}, bbox_to_anchor=(0, 1), bbox_transform=plt.gcf().transFigure)
         
         if show:
             plt.show()
@@ -545,12 +544,14 @@ class Network(nx.Graph):
         # generate drawing layout as selected
         self.pos = method_to_call(self, **passed_kwargs)
         return self.pos
-            
+
+    
 ###
 # Graph generator functions:
 # get_random - returns a random graph given by typ type
 # get_from_predef - load a predefined nxGraph
 ###
+    
     
 def get_random(netsize=200, k=10, rem_orphans=False, weighted=False, typ='random', p=.1, count_importance=1, nseed=None, inet=0, use_weights=False, **kwargs):
     G = Network()
@@ -572,6 +573,7 @@ def get_random(netsize=200, k=10, rem_orphans=False, weighted=False, typ='random
                 # Note that the node_traced list will be copied over to the tracing network!
                 G.node_traced[nid] = True
     return G
+
 
 def get_from_predef(nx_or_edgelist, rem_orphans=False, count_importance=1, inet=0, use_weights=False, W_factor=0, K_factor=10, **kwargs):
     """
@@ -619,6 +621,7 @@ def get_from_predef(nx_or_edgelist, rem_orphans=False, count_importance=1, inet=
                     # Note that the node_traced list will be copied over to the tracing network!
                     G.node_traced[nid] = True
     return G
+
 
 def get_dual_from_predef(G, nx_or_edgelist, count_importance=1, W_factor=0, K_factor=10, **kwargs):
     # the copy of the graph will include everything at this point, including active node_list, node_states, node_traced

@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 
 from math import ceil
 from time import sleep
-from copy import deepcopy
 from itertools import count
 from multiprocessing import cpu_count
 from collections import defaultdict
@@ -65,7 +64,7 @@ class EngineNet(Engine):
             first_inf_nodes = random.Random(args.seed).sample(true_net.nodes, args.first_inf)
         # TypeError: nettype is a str, KeyError: key '0' is not in the dynamic dict, IndexError: element 0 (inf net) not in list
         # note that in this block we no longer need to define the first_inf nodes because they have already been sampled prior to the main loop for random graphs
-        except (TypeError, KeyError, IndexError) as e:
+        except (TypeError, KeyError, IndexError):
             true_net = network.get_random(typ=nettype, nseed=net_seed, inet=inet, **args_dict)
                 
         # Change the state of the first_inf_nodes to 'I' to root the simulation
@@ -128,9 +127,9 @@ class EngineNet(Engine):
             jobs = int(cpu_count() / (args.multip - 1))
             with Pool(jobs) as pool:
                 for itr, stats_events in enumerate(tqdm_redirect(pool.imap(engine, iters_range), total=niters,
-                                                                desc='Iterations simulation progress')):
+                                                                 desc='Iterations simulation progress')):
                     # Record sim results
-                    net_events[itr] = stats_events           
+                    net_events[itr] = stats_events
         
         else:
             for itr in tqdm_redirect(iters_range, desc='Iterations simulation progress'):
@@ -157,10 +156,10 @@ class EngineNet(Engine):
     
 class EngineDual(Engine):
     
-    def reinit_net(self, first_inf_nodes):    
+    def reinit_net(self, first_inf_nodes):
         self.true_net.init_for_simulation(first_inf_nodes)
         self.know_net.copy_state_from(self.true_net)
-        
+     
     def __call__(self, itr):
         
         # local vars for efficiency
@@ -222,21 +221,21 @@ class EngineDual(Engine):
 
         # metrics to record simulation summary
         m = {
-            'nI' : inf,
-            'nE' : 0,
-            'nH' : 0,
-            'totalInfected' : inf,
+            'nI': inf,
+            'nE': 0,
+            'nH': 0,
+            'totalInfected': inf,
             'totalInfectious': inf,
             'totalFalseNegative': 0,
-            'totalTraced' : 0,
+            'totalTraced': 0,
             'totalFalseTraced': 0,
             'totalExposedTraced': 0,
             'totalNonCompliant': 0,
-            'totalRecovered' : 0,
-            'totalHospital' : 0,
-            'totalDeath' : 0,
-            'tracingEffortRandom' : 0,
-            'tracingEffortContact' : [0],
+            'totalRecovered': 0,
+            'totalHospital': 0,
+            'totalDeath': 0,
+            'tracingEffortRandom': 0,
+            'tracingEffortContact': [0],
         }
         
         # iterator needed for dynamical graph updates
@@ -504,7 +503,7 @@ class EngineDual(Engine):
             
 class EngineOne(Engine):
     
-    def reinit_net(self, first_inf_nodes):    
+    def reinit_net(self, first_inf_nodes):
         self.true_net.init_for_simulation(first_inf_nodes)
     
     def __call__(self, itr):
@@ -566,21 +565,21 @@ class EngineOne(Engine):
 
         # metrics to record simulation summary
         m = {
-            'nI' : inf,
-            'nE' : 0,
-            'nH' : 0,
-            'totalInfected' : inf,
+            'nI': inf,
+            'nE': 0,
+            'nH': 0,
+            'totalInfected': inf,
             'totalInfectious': inf,
             'totalFalseNegative': 0,
-            'totalTraced' : 0,
+            'totalTraced': 0,
             'totalFalseTraced': 0,
             'totalExposedTraced': 0,
             'totalNonCompliant': 0,
-            'totalRecovered' : 0,
-            'totalHospital' : 0,
-            'totalDeath' : 0,
-            'tracingEffortRandom' : 0,
-            'tracingEffortContact' : [0],
+            'totalRecovered': 0,
+            'totalHospital': 0,
+            'totalDeath': 0,
+            'tracingEffortRandom': 0,
+            'tracingEffortContact': [0],
         }
 
         # iterator needed for dynamical graph updates
@@ -716,9 +715,9 @@ class EngineOne(Engine):
             if args.efforts:
                 # loop through nodes to collect list of tracing efforts FOR EACH tracing network
                 efforts_for_all = true_net.compute_efforts(taur)
-                # random (testing) effort is the first element (no dual networks here)    
+                # random (testing) effort is the first element (no dual networks here)
                 m['tracingEffortRandom'] = efforts_for_all[0]
-                # the contact tracing effort is the first second (no dual networks here) 
+                # the contact tracing effort is the first second (no dual networks here)
                 m['tracingEffortContact'] = [efforts_for_all[1]]
                 
             

@@ -1,9 +1,10 @@
 import pandas as pd
 import numpy as np
 
+
 def load_socialevol(agg='D', proxim_prob=None):
     call = pd.read_csv('data/SocialEvolution/Calls.csv.bz2')
-    sms = pd.read_csv('data/SocialEvolution/SMS.csv.bz2', encoding = "ISO-8859-1")
+    sms = pd.read_csv('data/SocialEvolution/SMS.csv.bz2', encoding="ISO-8859-1")
     proxim = pd.read_csv('data/SocialEvolution/Proximity.csv.bz2')
 #     wlan = pd.read_csv('data/SocialEvolution/WLAN2.csv.bz2')
     # Deal with naming issues
@@ -12,7 +13,6 @@ def load_socialevol(agg='D', proxim_prob=None):
     date = 'time'
     ct = 'counts'
     time_idx = 'timeid'
-    time_str = 'timestr'
     sms.rename(columns={'user.id': uid, 'dest.user.id.if.known': dest}, inplace=True)
     call.rename(columns={'user_id': uid, 'dest_user_id_if_known': dest, 'time_stamp': date}, inplace=True)
     proxim.rename(columns={'user.id': uid, 'remote.user.id.if.known': dest}, inplace=True)
@@ -26,7 +26,7 @@ def load_socialevol(agg='D', proxim_prob=None):
     cols = [time_idx, date, uid, dest]
     
     def get_counts_by_time_agg(df):
-        df = df.astype({uid: 'int', dest:'int', date: 'datetime64[D]'}, copy=False)
+        df = df.astype({uid: 'int', dest: 'int', date: 'datetime64[D]'}, copy=False)
         year = df[date].dt.isocalendar().year
         # we only consider dates which span weeks from 2008 and 2009
         df = df[year.isin((2008, 2009))]
@@ -49,6 +49,7 @@ def load_socialevol(agg='D', proxim_prob=None):
     merge_sms_call = pd.merge(sms_filt, call_filt, on=cols, how='outer').set_index(cols).sum(axis=1).reset_index(name=ct).astype({ct:'int'})
     
     return (proxim_filt, merge_sms_call)
+    
     
 class DataLoader():
     
@@ -82,14 +83,14 @@ class DataLoader():
             # filter out data in the tracing network that was before the first data in the infection net
             tr = tr[tr.timeid >= 0]
             # union of the set of all time index keys
-            keys = time_keys.union(tr.timeid)
+            time_keys = time_keys.union(tr.timeid)
             # format for return is {time_index : (infection network edges, tracing network edges)}
-            edges = {str(int(timeid)) : (inf.loc[inf.timeid == timeid][vars_to_query].values, \
-                           tr.loc[tr.timeid == timeid][vars_to_query].values) for timeid in time_keys}
+            edges = {str(int(timeid)): (inf.loc[inf.timeid == timeid][vars_to_query].values,
+                                        tr.loc[tr.timeid == timeid][vars_to_query].values) for timeid in time_keys}
             # normalization <W> for tracing net - average over timesteps of averages over nodes
             edges['Wt'] = tr.counts.sum() / norm_for_avg
         else:
-            edges = {str(int(timeid)) : (inf.loc[inf.timeid == timeid][vars_to_query].values, None) for timeid in time_keys}
+            edges = {str(int(timeid)): (inf.loc[inf.timeid == timeid][vars_to_query].values, None) for timeid in time_keys}
         # normalization <W> for infection net - average over timesteps of averages over nodes
         edges['Wi'] = inf.counts.sum() / (len(time_keys) * len(nodes))
         # we also set a key for retrieving node ids in this data

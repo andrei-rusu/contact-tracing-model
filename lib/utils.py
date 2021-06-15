@@ -8,7 +8,6 @@ import json
 import glob
 import importlib
 import numpy as np
-import os
 import sys
 import io
 import matplotlib.pyplot as plt
@@ -25,6 +24,8 @@ from multiprocess.pool import Pool
 
 
 saved_stdout = None
+
+
 # Disable print and remember stdout into saved_stdout
 def block_print():
     if not isinstance(stdout, io.StringIO):
@@ -32,16 +33,19 @@ def block_print():
         saved_stdout = stdout
         sys.stdout = io.StringIO()
 
+        
 # Restore saved_stdout into stdout
 def enable_print():
     if saved_stdout:
         sys.stdout = saved_stdout
+
         
 def is_not_empty(lst):
     """
     Agnostic of None, Python Iterables and np.arrays
     """
     return lst is not None and getattr(lst, 'size', len(lst))
+
 
 def r_from_growth(growth, method='exp', t=7, mean=6.6, shape=1.87, inv_scale=0.28):
     """
@@ -54,11 +58,13 @@ def r_from_growth(growth, method='exp', t=7, mean=6.6, shape=1.87, inv_scale=0.2
     elif method == 'jrc':
         return 1 + math.log(growth) / t * mean
 
+    
 def pad_2d_list_variable_len(a, pad=0):
     max_len = len(max(a, key=len))
     return [i + [pad] * (max_len - len(i)) for i in a]
 
-def get_z_for_overlap(k=10, overlap=.08, include_add=False):
+
+def get_z_for_overlap(k=10, overlap=.08, include_add=0):
     if include_add:
         z = k * (1 - overlap) / (1 + overlap)
         return z, z
@@ -66,8 +72,10 @@ def get_z_for_overlap(k=10, overlap=.08, include_add=False):
         z = k * (1 - overlap)
         return 0, z
 
+    
 def get_overlap_for_z(k=10, z_add=5, z_rem=5):
     return (k - z_rem) / (k + z_add)
+  
     
 def decode_pair(i):
     """
@@ -76,8 +84,9 @@ def decode_pair(i):
     # triangular root is the second item in the pair
     second = math.floor((1+math.sqrt(1+8*i))/2)
     # first element is difference from root to number i
-    first = i - second*(second-1)//2 
+    first = i - second*(second-1)//2
     return first, second
+
 
 def rand_pairs(n, m, seed=None):
     """
@@ -85,6 +94,7 @@ def rand_pairs(n, m, seed=None):
     """
     rand = random if seed is None else random.Random(seed)
     return [decode_pair(i) for i in rand.sample(range(n*(n-1)//2),m)]
+
 
 def rand_pairs_excluding(n, m, to_exclude, seed=None):
     """
@@ -109,6 +119,7 @@ def get_stateless_sampling_func(lamda, exp=True):
         return (lambda net, nid, time=None: lamda)
     return (lambda net, nid, time=None: (-math.log(1. - random.random()) / lamda))
 
+
 def get_stateful_sampling_func(sampler_type='expFactorTimesCountMultiState', exp=True, **kwargs):
     "exp controls whether the rate is exponentially sampled at this stage or left as a base rate"
     if not exp: 
@@ -126,12 +137,14 @@ def expFactorTimesCount(net, nid, state='I', lamda=1, **kwargs):
         return -(math.log(1. - random.random()) / exp_param)
     return float('inf')
 
+
 def expFactorTimesCount_rate(net, nid, state='I', lamda=1, **kwargs):
     """
     Sample from an Exponential with Neighbour counts
     """
     exp_param = lamda * net.node_counts[nid][state]
     return exp_param
+
 
 def expFactorTimesTimeDif(net, nid, lamda=1, current_time=100, **kwargs):
     """
@@ -142,13 +155,15 @@ def expFactorTimesTimeDif(net, nid, lamda=1, current_time=100, **kwargs):
         return -math.log(1. - random.random()) / exp_param
     return float('inf')
 
+
 def expFactorTimesTimeDif_rate(net, nid, current_time=100, lamda=1, **kwargs):
     """
     Sample from an Exponential with tracing time difference
     """
     exp_param = lamda * (current_time - net.traced_time[nid])
     return exp_param
-    
+
+
 def expFactorTimesCountImportance(net, nid, state='T', base=0, **kwargs):
     """
     Sample from an Exponential with Neighbour counts weighted by network count_importance
@@ -158,12 +173,14 @@ def expFactorTimesCountImportance(net, nid, state='T', base=0, **kwargs):
         return -math.log(1. - random.random()) / exp_param
     return float('inf')
 
+
 def expFactorTimesCountImportance_rate(net, nid, state='T', base=0, **kwargs):
     """
     Sample from an Exponential with Neighbour counts weighted by network count_importance
     """
     exp_param = base + net.count_importance * net.node_counts[nid][state]
     return exp_param
+
 
 def expFactorTimesCountMultiState(net, nid, states=['I'], lamda=1, rel_states=[], rel=1, **kwargs):
     """
@@ -183,6 +200,7 @@ def expFactorTimesCountMultiState(net, nid, states=['I'], lamda=1, rel_states=[]
         return -math.log(1. - random.random()) / exp_param
     return float('inf')
 
+
 def expFactorTimesCountMultiState_rate(net, nid, states=['I'], lamda=1, rel_states=[], rel=1, **kwargs):
     """
     lamda : multiplicative factor of exponential
@@ -198,7 +216,6 @@ def expFactorTimesCountMultiState_rate(net, nid, states=['I'], lamda=1, rel_stat
         exp_param_rel_states += counts[state]
     exp_param = lamda * (exp_param_states + rel * exp_param_rel_states)
     return exp_param
-
 
 
 ### Methods for computing various statistics from the Simulation results ###
@@ -224,10 +241,10 @@ def get_statistics(data, compute='mean', axis=0, avg_without_idx=None, round_to=
             boxplot_stats_list = get_boxplot_statistics(for_data, None, round_to)
         elif compute == 'mean+wo_boxplot':
             result_list = get_means_and_std(for_data, avg_without_idx, round_to)
-            boxplot_stats_list = get_boxplot_statistics(for_data, None, round_to)        
+            boxplot_stats_list = get_boxplot_statistics(for_data, None, round_to)
         elif compute == 'mean_boxplot+wo':
             result_list = get_means_and_std(for_data, None, round_to)
-            boxplot_stats_list = get_boxplot_statistics(for_data, avg_without_idx, round_to)      
+            boxplot_stats_list = get_boxplot_statistics(for_data, avg_without_idx, round_to)
         elif compute == 'all':
             result_list = get_means_and_std(for_data, avg_without_idx, round_to)
             boxplot_stats_list = get_boxplot_statistics(for_data, avg_without_idx, round_to)
@@ -236,6 +253,7 @@ def get_statistics(data, compute='mean', axis=0, avg_without_idx=None, round_to=
             result_list[i].update(boxplot_stats_list[i])
             
     return result_list
+
 
 def get_means_and_std(for_data, avg_without_idx=None, round_to=2):
     shape_dat = for_data.shape
@@ -283,6 +301,7 @@ def get_means_and_std(for_data, avg_without_idx=None, round_to=2):
         results.append(dct)
         
     return results
+
 
 def get_boxplot_statistics(for_data, avg_without_idx=None, round_to=2):
     # boxplot computes mean, quartiles and whiskers
@@ -358,11 +377,13 @@ def redirect_to_tqdm():
         yield
     finally:
         inspect.builtins.print = old_print
+
         
 def tqdm_redirect(*args, **kwargs):
     with redirect_to_tqdm():
         for x in tqdm.tqdm(*args, file=stdout, **kwargs):
             yield x
+
             
 @contextmanager
 def tqdm_joblib(tqdm_object):
@@ -397,7 +418,8 @@ def tqdm_joblib(tqdm_object):
 def rel(*modules):
     for module in modules:
         importlib.reload(module)
-        
+     
+    
 # prints all variables specified in the current frame and their value
 def pvar(*var, owners=True):
     frame = inspect.currentframe().f_back
@@ -414,7 +436,7 @@ def pvar(*var, owners=True):
             format_to_print = "{} = {}, "
             if i == last_var:
                 format_to_print = format_to_print[:-2]
-            print(format_to_print.format(fi[i],x), end="", flush=True)
+            print(format_to_print.format(fi[i], x), end="", flush=True)
     print()
             
             
@@ -424,11 +446,11 @@ def animate_cell_capture(capture, filename=None, fps=1, quality=6.):
     # import imageio here to avoid dependency if no writing of animation is performed
     from imageio import mimsave
     
-    kwargs_write = {'fps':fps, 'quality':quality}
+    kwargs_write = {'fps': fps, 'quality': quality}
     if not filename:
         filename = 'fig/simulation.gif'
     if filename.endswith('.gif'):
-        kwargs_write.update({'quantizer':'nq'})
+        kwargs_write.update({'quantizer': 'nq'})
     if not filename.startswith('fig/'):
         filename = 'fig/' + filename
     image_data = [Image.open(io.BytesIO(img_data._repr_png_())) for img_data in capture.outputs]
@@ -444,6 +466,7 @@ def pkl(obj, filename=None):
     with open(filename, 'wb') as handle:
         pickle.dump(obj, handle, protocol=pickle.HIGHEST_PROTOCOL)
         
+
 def get_pkl(obj=None):
     # Load data (deserialize)
     if type(obj) != str:
@@ -454,6 +477,7 @@ def get_pkl(obj=None):
     with open(filename, 'rb') as handle:
         return pickle.load(handle)
     
+    
 def get_json(json_or_path):
     # Can load from either a json string or a file path
     try:
@@ -461,6 +485,7 @@ def get_json(json_or_path):
     except:
         with open(json_or_path, 'r', encoding="utf8") as handle:
             return json.loads(handle.read())
+        
         
 def process_json_results(path=None, print_id_fail=True, overlap_to_capture='overlap'):
     """
@@ -492,11 +517,11 @@ def process_json_results(path=None, print_id_fail=True, overlap_to_capture='over
                 try:
                     results = json_file['res']
                 # for multiple taut values or older versions, the results are under keys str(taut_entry)
-                except:
+                except KeyError:
                     # The following try block is needed to cover for the case in which the supplied taut is either float/int
                     try:
                         results = json_file[str(taut_entry)]
-                    except:
+                    except KeyError:
                         results = json_file[str(int(taut_entry))]
                         
                 all_sim_res[pa][dual][uptake][over][taut_entry][taur] = results
@@ -511,18 +536,25 @@ def process_json_results(path=None, print_id_fail=True, overlap_to_capture='over
 ### Useful classes ###
 
 # JSON-like class for holding up Events
+# Supports both simple dict API and OOP dot notation
 class Event(dict):
     """
     General JSON-like class for recording information about various Events
     """
+    
     def __init__(self, **kwargs):
-        for k in kwargs:
-            setattr(self, k, kwargs[k])
+        self.update(kwargs)
+        
+    def __repr__(self):
+        items = (f"{k}={v!r}" for k, v in self.items())
+        return "{}({})".format(type(self).__name__, ", ".join(items))
+            
     def __getattr__(self, item):
         try:
             return self[item]
         except KeyError:
             raise AttributeError(item)
+            
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
 
@@ -532,6 +564,7 @@ class Profiler(Profile):
     """ Custom Profile class with a __call__() context manager method to
         enable profiling.
     """
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.disable()  # Profiling initially off.
@@ -548,7 +581,8 @@ class Profiler(Profile):
         stats = Stats(self, stream=stream)
         stats.strip_dirs().sort_stats('cumulative', 'time')
         stats.print_stats()
-        
+     
+    
 # Class for JSON-encoding dicts containing numpy arrays
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -564,7 +598,7 @@ class ListDelegator(list):
     
     def __init__(self, *args, args_list=()):
         all_args = args + tuple(args_list)
-        list.__init__(self, all_args)        
+        list.__init__(self, all_args)
 
     def __getattr__(self, method_name):
         if self and hasattr(self[0], method_name):
@@ -579,7 +613,7 @@ class ListDelegator(list):
             # returning the attribute rather than the delegator func directly due to "self" inconsistencies
             return getattr(self, method_name)
         else:
-            error = "Could not find '" +  method_name + "' in the attributes list of this ListDelegator's elements"
+            error = "Could not find '" + method_name + "' in the attributes list of this ListDelegator's elements"
             raise AttributeError(error)
             
     def draw(self, *args, ax=[None, None], **kw):
@@ -597,9 +631,9 @@ class NoDaemonProcess(Process):
     def daemon(self, val):
         pass
     
+    
 class NoDaemonPool(Pool):
     def Process(self, *args, **kwds):
         proc = super().Process(*args, **kwds)
         proc.__class__ = NoDaemonProcess
         return proc
-    
