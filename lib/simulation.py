@@ -26,8 +26,8 @@ class Simulation():
             sampler = get_sampler(presample_size=presample, scale_one=True)
             self.sampling = lambda rate: (sampler.get_next_sample(rate) if rate else float('inf'))
         # variables for Gillespie sampling
-        # node that gets invalidated after an update
-        self.last_updated = -1
+        # nodes that get invalidated after an update
+        self.last_updated = []
         # the current base rates for each of the node
         self.lamdas = defaultdict(list)
 
@@ -216,10 +216,13 @@ class Simulation():
             self.noncompliance = noncompliance_rate_func
             
         
-        last_updated = self.last_updated
         lamdas = self.lamdas
-        # update propensity base rates only for the last updated and its neighbors; if first iter update for all
-        nodes_for_updating = [last_updated] + list(net.neighbors(last_updated)) if last_updated >= 0 else node_list
+        last_updated = self.last_updated
+        # update propensity base rates only for the last updated and their neighbors; if first time here, update for all
+        nodes_for_updating = last_updated + [neigh for update_id in last_updated for neigh in net.neighbors(update_id)] \
+                                    if last_updated else node_list
+        # clear the list of invalidated nodes for next update
+        last_updated.clear()
         
         # loop through the list of 'invalidated' nodes - i.e. for which the rates need to be updated
         for nid in nodes_for_updating:
@@ -246,6 +249,7 @@ class Simulation():
             elif noncompliance_rate_func and current_traced and current_state in trace_funcs:
                 for trace_net in tracing_nets:
                     lamdas[nid].append((noncompliance_rate_func(trace_net, nid, time), noncompliant_state))
+                    
         
         base_rates = []
         sum_lamdas = 0
@@ -277,18 +281,18 @@ class Simulation():
     def run_event(self, e):
         self.net.change_state_fast_update(e.node, e.to)
         self.time = e.time
-        self.last_updated = e.node
+        self.last_updated.append(e.node)
         
     def run_event_no_update(self, e):
         self.time = e.time
-        self.last_updated = e.node
+        self.last_updated.append(e.node)
         
     def run_trace_event_for_trace_net(self, e, to_traced=True, legal_isolation_exit=False):
         self.net.change_traced_state_update_tracing(e.node, to_traced, e.time, legal_isolation_exit)
         self.time = e.time
-        self.last_updated = e.node
+        self.last_updated.append(e.node)
         
     def run_trace_event_for_infect_net(self, e, to_traced=True, legal_isolation_exit=False):
         self.net.change_traced_state_update_infectious(e.node, to_traced, e.time, legal_isolation_exit)
         self.time = e.time
-        self.last_updated = e.node
+        self.last_updated.append(e.node)

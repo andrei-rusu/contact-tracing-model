@@ -7,7 +7,7 @@
 #SBATCH --job-name="Epidemic Grid Simulation"
 #SBATCH --ntasks-per-node=20     # Tasks per node
 #SBATCH --nodes=1                # Number of nodes requested
-#SBATCH --time=00:08:00          # walltime
+#SBATCH --time=00:11:00          # walltime
 #SBATCH -o data/run/job_output/slurm/slurm-%A_%a.out        # STDOUT
 #SBATCH -e data/run/job_output/slurm/slurm-%A_%a.err        # STDERR
 
@@ -34,13 +34,13 @@ pa=${gridentry[3]}
 overlap=${gridentry[4]}
 dual=${gridentry[5]}
 
+newfile="data/run/social_slurm/simresult_id"$SLURM_ARRAY_TASK_ID"_"$pa"_"$taur"_"$uptake".json"
+
 # circumvent normal logic for taut if a value of 10 has been supplied -> check for 4 different values for taut
 if [ $taut -eq 10 ]
 then
-    taut=(.1 .2 .5 1.0 1.5 2.0)
+    taut=(.1 .2 .5 .7 1.0 1.5 2.0 2.5 3.0 5.0)
 fi
-
-newfile="data/run/social_slurm/simresult_id"$SLURM_ARRAY_TASK_ID"_"$taut"_"$taur"_"$uptake".json"
 
 # Needed such that matplotlib does not produce error because XDG_RUNTIME_DIR not set
 export MPLBACKEND=Agg
@@ -49,6 +49,7 @@ python run.py \
     --nettype "socialevol" \
     --use_weights True \
     --K_factor 10 \
+    --update_after 7 \
     --multip 2 \
     --model "covid" \
     --dual $dual \

@@ -347,7 +347,8 @@ class EngineDual(Engine):
                     if e.fr == 'E': m['totalExposedTraced'] += 1
             
             ### Good place to debug events
-#             print(e)
+#             if itr == 2:
+#                 print(e)
                         
             # event.TO Updates are common for all models and all parameter settings
             

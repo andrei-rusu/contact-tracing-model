@@ -148,11 +148,16 @@ def main(args):
     
     # if the special 'socialevol' value was supplied for nettype, the argument will be overwritten with data coming from the Social Evolution dataset
     # this is an easy hook point to supply own logic for loading custom datasets
-    if args.nettype == 'socialevol':
+    if args.nettype.startswith('socialevol'):
         # allow update_after (used to indicate when dynamic edge updates happen) to influence the aggregation of data (either weekly or daily)
         agg = 'W' if args.update_after > 3 else 'D'
+        # proximity probability filtering can be specified after :
+        try:
+            proxim_prob = float(args.nettype.split(':')[1])
+        except IndexError:
+            proxim_prob = None
         # this effectively reads out the data file and does initial filtering and joining
-        loader = DataLoader(agg=agg, proxim_prob=None)
+        loader = DataLoader(agg=agg, proxim_prob=proxim_prob)
         # supply to the args.nettype a dictionary, with keys being 'nid', 'Wi', 'Wt' (if which_tr>=0), and '0', '1', '2'
         # corresponding to the timestamp of the specific dynamical edge update
         # note that the code also supports custom tracing networks (in the SocialEvol example, choose which_tr>=0 for this scenario to take effect)
