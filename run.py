@@ -99,8 +99,10 @@ PARAMETER_DEFAULTS = {
     # running number of nets, iterations per net and events for each
     # nevents == 0, run until no more events
     'nnets': 1, 'niters': 1, 'nevents': 0,
-    # seed of infection and exponentials, and the seed for network initializations
-    'seed': -1, 'netseed': -1,
+    # seed of simulation exponentials; the seed for network initializations; and the first infected seed
+    # if -1, both seed and netseed default to None, whereas infseed is ignored (and netseed gets used for sampling the first infected)
+    # except for infseed (and only in the case of a positive value), neither seed gets used directly, rather they get incremented by iterators
+    'seed': -1, 'netseed': -1, 'infseed': -1,
     # 0 - no multiprocess, 1 - multiprocess nets, 2 - multiprocess iters, 3 - multiprocess nets and iters (half-half cpus)
     'multip': 1,
     # dir: the exponential is sampled DIRECTLY from the function registered on the transition object
@@ -122,7 +124,7 @@ PARAMETER_DEFAULTS = {
     # how many time splits to use for the epidemic summary
     'summary_splits': 1000,
     # number of days for Reff calculation
-    'r_window': 5,
+    'r_window': 7,
     # first_inf + earlystop_margin determines if a simulation is regarded as early stopped
     'earlystop_margin': 0,
     # whether alternative averages which have no early stopped iterations are to be computed
@@ -151,17 +153,29 @@ def main(args):
     if args.nettype.startswith('socialevol'):
         # allow update_after (used to indicate when dynamic edge updates happen) to influence the aggregation of data (either weekly or daily)
         agg = 'W' if args.update_after > 3 else 'D'
-        # proximity probability filtering can be specified after :
+        # proximity probability filtering can be specified after ':'
+        options = args.nettype.split(':')
+        # defaults
+        proxim_prob = None
+        time_fr, time_to = '2009-01-05', '2009-06-14'
+        use_week_index = False
         try:
-            proxim_prob = float(args.nettype.split(':')[1])
-        except IndexError:
-            proxim_prob = None
+            proxim_prob = float(options[1])
+        except (IndexError, ValueError):
+            pass
+        try:
+            time_options = options[2].split(',')
+            time_fr = int(time_options[0])
+            time_to = int(time_options[1])
+            use_week_index = (time_options[2].lower() == 'w')
+        except (IndexError, ValueError):
+            pass
         # this effectively reads out the data file and does initial filtering and joining
         loader = DataLoader(agg=agg, proxim_prob=proxim_prob)
         # supply to the args.nettype a dictionary, with keys being 'nid', 'Wi', 'Wt' (if which_tr>=0), and '0', '1', '2'
         # corresponding to the timestamp of the specific dynamical edge update
         # note that the code also supports custom tracing networks (in the SocialEvol example, choose which_tr>=0 for this scenario to take effect)
-        args.nettype = loader.get_edge_data_for_time(which_inf=0, which_tr=None)
+        args.nettype = loader.get_edge_data_for_time(which_inf=0, which_tr=None, time_to=time_to, time_fr=time_fr, use_week_index=use_week_index)
             
     # if animation of the infection progress is selected, disable all prints and enable both draw types
     if args.animate:
@@ -176,21 +190,38 @@ def main(args):
     if args.seed == -1: args.seed = None
     if args.netseed == -1: args.netseed = None
         
-    
+    # default the number of first infected nodes to None, and assume for now we know the nodes of the inf network
+    is_nids_known = True
     first_inf_nodes = None
+    
     # reflect in the netsize and the is_dynamic param the fact that we may have supplied a predefined infection network through args.nettype
     if '0' in args.nettype:
-        # the graph is dynamic if any update excepting '0' exists
-        args.is_dynamic = (len(args.nettype) > 1)
-    # else branch is for random graph, which is not dynamic and for which we can use args.netsize to sample the first infected
+        try:
+            nodes = args.nettype['nid']
+            args.netsize = len(nodes)
+        except KeyError:
+            args.netsize = 'To be inferred'
+            is_nids_known = False
+        # the graph is dynamic if any update excepting '0' exists, and the option is turned on through update_after
+        args.is_dynamic = (args.update_after > 0 and len(args.nettype) > 1)
+        # we also do not know the average degree by this point
+        args.k = 'To be inferred'
+    # else branch is for random networks, and the nids will be generated based on the range of args.netsize
     else:
+        nodes = range(args.netsize)
+        args.is_dynamic = False
+
+    # this branch is for random graphs, which are not dynamic and for which we can use args.netsize to sample the first infected
+    # OR for predefined networks that have the 'nid' supplied
+    # Note that an 'infseed' also needs to be supplied; if not, the first infected will be sampled at network creation time
+    # being sampled at net creation time, the first infected become dependent on the args.netseed + network_index (so can be DIFFERENT for each net!)
+    if is_nids_known and args.infseed != -1:
         # update number of first infected to reflect absolute values rather than percentage
         # if args.first_inf >= 1 just turn the value into an int and use that as number of first infected
         args.first_inf = int(args.first_inf) if args.first_inf >= 1 else int(args.first_inf * args.netsize)
         # Random first infected across simulations - seed random locally
-        first_inf_nodes = random.Random(args.seed).sample(range(args.netsize), args.first_inf)
-        # the random graph is not dynamic
-        args.is_dynamic = False
+        first_inf_nodes = random.Random(args.infseed).sample(nodes, args.first_inf)
+
     
     # Turn off multiprocessing if only one net and one iteration selected
     if args.nnets == 1 and args.niters == 1: args.multip = 0

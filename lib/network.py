@@ -266,7 +266,7 @@ class Network(nx.Graph):
         Tf ids is not supplied, this method does guarantees n additions will be performed past the max id or current counter
         """
         if ids is None:
-            # first element to be added is either max(nid) + 1 OR current + 1 = next - 1 + 1
+            # first element to be added is either max(nid) + 1 OR current_count + 1 = next_count - 1 + 1
             nxt = max(self.nodes, default=next(self.cont)-1) + 1
             ids = range(nxt, nxt + n)
             # increment count to reflect n additions
@@ -449,8 +449,11 @@ class Network(nx.Graph):
             self.update_counts_with_traced() if update_with_traced else self.update_counts()
         
             
-    def avg_degree(self):
-        return np.mean(list(dict(self.degree()).values()))
+    def avg_degree(self, use_weights=False):
+        if use_weights:
+            return np.mean(list(dict(self.degree(weight='weight')).values()))
+        else:
+            return 2 * len(self.edges) / len(self.nodes)
     
     def compute_efforts(self, taur):
         node_states = self.node_states
@@ -471,7 +474,7 @@ class Network(nx.Graph):
         return round(taur * randEffortAcum, 2), round(self.count_importance * tracingEffortAccum, 2)
     
         
-    def draw(self, pos=None, show=True, ax=None, layout_type='spring_layout', seed=43, legend=True, full_name=False, model='covid'):
+    def draw(self, pos=None, show=True, ax=None, layout_type='spring_layout', seed=43, legend=True, full_name=False, model='covid', degree_size=True):
         # get the node state list
         node_states = self.node_states
         # for the true network, colors for all nodes are based on their state
@@ -502,9 +505,14 @@ class Network(nx.Graph):
         else:
             # if both were None, generate a new layout with the seed and use it for drawing
             pos = self.generate_layout(layout_type=layout_type, seed=seed)
+            
+        node_size = None    
+        if degree_size:
+            d = nx.degree(self)
+            node_size = [(d[node]+1) * 100 for node in self.nodes]
                         
         # draw graph
-        nx.draw(self, pos=pos, node_color=colors, ax=ax, with_labels=True)
+        nx.draw(self, pos=pos, node_color=colors, ax=ax, with_labels=True, node_size=node_size)
         
         if legend:
             model_states = MODEL_TO_STATES[model]
@@ -591,8 +599,8 @@ def get_from_predef(nx_or_edgelist, rem_orphans=False, count_importance=1, inet=
         ids = nx_or_edgelist.nodes
         edges = list(nx_or_edgelist.edges(data=True))
     except AttributeError:
-        # allow for user inputted nids to be used if the 'nid' key is set
-        ids = kwargs['nettype'].get('nid', None)
+        # allow for user inputted nids to be used if the 'nid' key is set in the optional arg 'nettype'
+        ids = kwargs.get('nettype', {}).get('nid', None)
         # otherwise, infer the nodes from the edge list
         if not ids:
             # Need to obtain the set of node ids from the edge list

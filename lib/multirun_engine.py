@@ -55,17 +55,25 @@ class EngineNet(Engine):
         # if the net is predefined, we also seed here the first_inf_nodes (this is because we did not have access to the list of nodes prior to this point)
         try:
             true_net = network.get_from_predef(nettype['0'][0], inet=inet, W_factor=nettype.get('Wi', 0), **args_dict)
-            # update netsize and k params
-            args.netsize = len(true_net)
+            # update the average degree k and add new k_i parameter
             args.k = true_net.avg_degree()
-            # turn first_inf into an absolute number if it's a percentage - the absolute number of args.first_inf will be used later for statistics
-            args.first_inf = int(args.first_inf) if args.first_inf >= 1 else int(args.first_inf * args.netsize)
-            # Random first infected across simulations - seed random locally
-            first_inf_nodes = random.Random(args.seed).sample(true_net.nodes, args.first_inf)
+            # add a special new parameter which will track all average weights (with and without weighs)
+            args.k_i = {
+                '0': (args.k, true_net.avg_degree(use_weights=True))
+            }
         # TypeError: nettype is a str, KeyError: key '0' is not in the dynamic dict, IndexError: element 0 (inf net) not in list
         # note that in this block we no longer need to define the first_inf nodes because they have already been sampled prior to the main loop for random graphs
         except (TypeError, KeyError, IndexError):
             true_net = network.get_random(typ=nettype, nseed=net_seed, inet=inet, **args_dict)
+            
+        # first_inf_nodes could have been calculated by this point if random network or 'nid' key was supplied in args.nettype
+        if first_inf_nodes is None:
+            # need to update the network size which has to reflect the true network created
+            args.netsize = len(true_net)
+            # turn first_inf into an absolute number if it's a percentage - the absolute number of args.first_inf will be used later for statistics
+            args.first_inf = int(args.first_inf) if args.first_inf >= 1 else int(args.first_inf * args.netsize)
+            # Random first infected across simulations - seed random locally
+            first_inf_nodes = random.Random(net_seed).sample(true_net.nodes, args.first_inf)
                 
         # Change the state of the first_inf_nodes to 'I' to root the simulation
         true_net.change_state(first_inf_nodes, state='I', update=True)
@@ -421,9 +429,12 @@ class EngineDual(Engine):
             if not m['nE'] + m['nI'] + m['nH']:
                 break
                 
+                
             # allow for dynamic updates of the network to occur after update_after days IF ANY PROVIDED
-            nettype = args.nettype
-            if args.is_dynamic and current_time > args.update_after * update_iter:
+            if args.is_dynamic and current_time >= args.update_after * update_iter:
+                # the current_time may correspond to an update further ahead than update_iter, therefore we need to update update_iter accordingly
+                update_iter = int(current_time // args.update_after)
+                nettype = args.nettype
                 try:
                     # nettype should contain keys [1,2,3] corresponding to update times mapped to dynamic update sequences for each network
                     edges_to_update = nettype[str(update_iter)]
@@ -457,6 +468,8 @@ class EngineDual(Engine):
                             true_net.node_list.extend(node_list)
                             # update counts without traced
                             true_net.update_counts()
+                            # keep track of new average degrees
+                            args.k_i[str(update_iter)] = (true_net.avg_degree(), true_net.avg_degree(use_weights=True))
                         
                         len_edges = len(edges_to_update)
                         # if edges have also been supplied for the dual networks, they will appear starting from index 1
@@ -747,7 +760,7 @@ class EngineOne(Engine):
                 
             # allow for dynamic updates of the network to occur after update_after days IF ANY PROVIDED
             nettype = args.nettype
-            if args.is_dynamic and current_time > args.update_after * update_iter:
+            if args.is_dynamic and current_time >= args.update_after * update_iter:
                 try:
                     # nettype should contain keys [1,2,3] corresponding to update times mapped to dynamic update sequences for each network
                     edges_to_update = nettype[str(update_iter)]
@@ -781,7 +794,7 @@ class EngineOne(Engine):
                             # update counts without traced
                             true_net.update_counts()
                 
-                # If the specified key cannot be found, then there is no dynamic edge update for this time
+                # If the specified key cannot be found, then there is no dynamic edge update for this time id
                 except KeyError:
                     pass
                 update_iter += 1

@@ -12,6 +12,7 @@ def load_socialevol(agg='D', proxim_prob=None):
     dest = 'dst'
     date = 'time'
     ct = 'counts'
+    week_idx = 'weekid'
     time_idx = 'timeid'
     sms.rename(columns={'user.id': uid, 'dest.user.id.if.known': dest}, inplace=True)
     call.rename(columns={'user_id': uid, 'dest_user_id_if_known': dest, 'time_stamp': date}, inplace=True)
@@ -23,17 +24,17 @@ def load_socialevol(agg='D', proxim_prob=None):
     # we select only the proximity entries that have a higher chance of having been on the same floor
     proxim_filt = proxim[proxim.prob2 >= proxim_prob] if proxim_prob is not None else proxim
     
-    cols = [time_idx, date, uid, dest]
+    cols = [time_idx, date, week_idx, uid, dest]
     
     def get_counts_by_time_agg(df):
         df = df.astype({uid: 'int', dest: 'int', date: 'datetime64[D]'}, copy=False)
         year = df[date].dt.isocalendar().year
         # we only consider dates which span weeks from 2008 and 2009
         df = df[year.isin((2008, 2009))]
-        if agg == 'W':
-            df[time_idx] = (year - 2008) * 52 + df[date].dt.isocalendar().week - 1
-        else:
-            df[time_idx] = (year - 2008) * 52 + df[date].dt.dayofyear - 1
+        # we add by default a column specifying the week id (start index 0) of the datapoints for filtering purposes
+        df[week_idx] = (year - 2008) * 52 + (df[date].dt.isocalendar().week - 1)
+        # based on the value chosen for agg, we'll have either the week id or the day id as a time id (start index 0)
+        df[time_idx] = df[week_idx] if agg == 'W' else (year - 2008) * 366 + (df[date].dt.dayofyear - 1)
         # eliminate different orders for the 2 nids
         df[[uid, dest]] = np.sort(df[[uid, dest]], axis=1)
         # group by timeid, and node ids
@@ -59,21 +60,32 @@ class DataLoader():
         # load data as specified by the dataset and agg args
         self.data = globals()['load_' + dataset](agg, proxim_prob)
         
-    def get_edge_data_for_time(self, which_inf=0, which_tr=1, date_fr='2009-01-05', date_to='2009-06-14'):
+    def get_edge_data_for_time(self, which_inf=0, which_tr=1, time_fr='2009-01-05', time_to='2009-06-14', use_week_index=True):
+        """
+        date_fr/to can either be strings marking dates or integers marking the time ids (day or week ids) directly
+        """
         pd.options.mode.chained_assignment = None
         if which_inf is None or which_inf < 0:
             raise ValueError('A valid network must be selected for the infection net')
         vars_to_query = ['uid', 'dst', 'counts']
         inf = self.data[which_inf]
-        # select data inbetween these dates
-        inf = inf.loc[inf.time.between(date_fr, date_to)]
-        # correct first week id based on infection network min week
+        # filtering data can be done based on actual datetime (if time_fr is in str format), by weekid (if use_week_index=True), or by timeid otherwise
+        if isinstance(time_fr, str):
+            time_selector = 'time'
+        elif use_week_index:
+            time_selector = 'weekid'
+        else:
+            time_selector = 'timeid'
+        # select data inbetween these dates/time_ids based on time_selector chosen
+        inf = inf.loc[inf[time_selector].between(time_fr, time_to)]
+        # make first time id point 0, and amend the other entries to reflect this reindexing
         offset = inf.timeid.min()
         inf.timeid -= offset
         # get the time indexes
         time_keys = set(inf.timeid)
         nodes = set(inf.uid).union(inf.dst)
-        norm_for_avg = (max(time_keys) - min(time_keys) + 1) * len(nodes)
+        # we do not dilute the edge weights if there are holes in the time_keys -> assume data collection problem rather than no interaction
+        norm_for_avg = (inf.time.max() - inf.time.min()).days * len(nodes)
         if which_tr is not None and which_tr >= 0:
             tr = self.data[which_tr]
             # filter tracing net data to include only nodes available in the infection net and dates inbetween what is specified
@@ -92,7 +104,8 @@ class DataLoader():
         else:
             edges = {str(int(timeid)): (inf.loc[inf.timeid == timeid][vars_to_query].values, None) for timeid in time_keys}
         # normalization <W> for infection net - average over timesteps of averages over nodes
-        edges['Wi'] = inf.counts.sum() / (len(time_keys) * len(nodes))
+        sum_all = inf.counts.sum()
+        edges['Wi'] = 2 * sum_all / norm_for_avg
         # we also set a key for retrieving node ids in this data
         edges['nid'] = nodes
         return edges

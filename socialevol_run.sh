@@ -5,9 +5,9 @@
 # - these can be overridden on the qsub command line
 #
 #SBATCH --job-name="Epidemic Grid Simulation"
-#SBATCH --ntasks-per-node=20     # Tasks per node
+#SBATCH --ntasks-per-node=40     # Tasks per node
 #SBATCH --nodes=1                # Number of nodes requested
-#SBATCH --time=00:11:00          # walltime
+#SBATCH --time=00:15:00          # walltime
 #SBATCH -o data/run/job_output/slurm/slurm-%A_%a.out        # STDOUT
 #SBATCH -e data/run/job_output/slurm/slurm-%A_%a.err        # STDERR
 
@@ -39,18 +39,18 @@ newfile="data/run/social_slurm/simresult_id"$SLURM_ARRAY_TASK_ID"_"$pa"_"$taur"_
 # circumvent normal logic for taut if a value of 10 has been supplied -> check for 4 different values for taut
 if [ $taut -eq 10 ]
 then
-    taut=(.1 .2 .5 .7 1.0 1.5 2.0 2.5 3.0 5.0)
+    taut=(0 .1 .2 .5 1.0 1.5 2.0)
 fi
 
 # Needed such that matplotlib does not produce error because XDG_RUNTIME_DIR not set
 export MPLBACKEND=Agg
 
 python run.py \
-    --nettype "socialevol" \
+    --nettype "socialevol::40,70,w" \
     --use_weights True \
     --K_factor 10 \
-    --update_after 7 \
-    --multip 2 \
+    --update_after 1 \
+    --multip 3 \
     --model "covid" \
     --dual $dual \
     --uptake $uptake \
@@ -58,13 +58,13 @@ python run.py \
     --maintain_overlap False \
     --overlap_two $overlap \
     --maintain_overlap_two True \
-    --nnets 1 \
-    --niters 1000 \
+    --nnets 10 \
+    --niters 150 \
     --separate_traced True \
     --avg_without_earlystop True \
-    --trace_after 7 \
+    --trace_after 3 \
     --first_inf .1 \
-    --earlystop_margin 0 \
+    --earlystop_margin 5 \
     --rem_orphans False \
     --noncomp .001 \
     --noncomp_after 14 \
@@ -74,6 +74,7 @@ python run.py \
     --delay_two 2. \
     --taur $taur \
     --sampling_type "min" \
+    --infseed -1 \
     --netseed 31 \
     --seed 11 > $newfile 
 

@@ -44,6 +44,7 @@ class StatsProcessor():
         # local for efficiency
         args = self.args
         efforts = args.efforts
+        first_inf = args.first_inf
         
         summary = defaultdict(dict)
         summary['args'] = vars(args).copy()
@@ -83,16 +84,20 @@ class StatsProcessor():
             h_max = []
             h_timeofmax = []
             
-            # time range right limits
+            # time range right-limits
             time_range_limits = np.zeros(splits)
             # set upper time limits for each accumulator[:][j] pile
-            for j in range(splits):
-                time_range_limits[j] = max_time * (j + 1) / splits
+            # accumulator[:][0] is reserved for the initial configuration of the simulation, so only (splits - 1) slots remain available
+            available_time_splits = splits - 1
+            for j in range(1, splits):
+                time_range_limits[j] = max_time * j / available_time_splits
 
             # number of different vars computed across time
             num_vars = 13
             # holds simulation result parameters over time
             accumulator = np.zeros((num_vars, splits, len_series))
+            # set the first infected number for time 0 (second-dim-id = 0); indices in first dim: active-inf, total-inf, total-infectious
+            accumulator[np.ix_([0, 1, 9], [0], range(len_series))] = first_inf
             # indexes of early stopped
             idx_early_stopped = []
             # array of arrays containing multiple Reff/growth_rates measurements sampled every r_window
@@ -106,7 +111,7 @@ class StatsProcessor():
                 # counter var which will be used to index the current result in the series at a specific time slot
                 serI = 1
                 # iterate over "time splits"
-                for j in range(splits):
+                for j in range(1, splits):
                     # increment until the upper time limit of the j-th split - i.e. time_range_limits[j]
                     # is exceeded by an event (and therefore the event will be part of block j + 1)
                     while serI < len(ser) and time_range_limits[j] > ser[serI].time:
@@ -130,17 +135,14 @@ class StatsProcessor():
                     accumulator[12][j][ser_index] = last_idx.totalNonCompliant
 
                 
-                # get first event -> needed to compute peaks and growth rates
-                first_event = ser[0]
+                # Get Peak of Infection, Peak of Hospitalization, Time of peaks, and growth rate for r_window
+                # 'reference_' vars are for growths, '_max' vars are for peaks
+                this_i_max = reference_past_active_inf = reference_past_total_inf = first_inf
+                this_h_max = 0
+                this_i_timeofmax = this_h_timeofmax = reference_past_time = 0
                 growth = []
                 active_growth = []
-
-                # Get Peak of Infection, Peak of Hospitalization, Time of peaks, and Reff for r_window
-                # reference_ vars are for growths, _max vars are for peaks
-                this_i_max = reference_past_active_inf = first_event.nI + first_event.nE
-                this_h_max = first_event.nH
-                reference_past_total_inf = first_event.totalInfected
-                this_i_timeofmax = this_h_timeofmax = reference_past_time = first_event.time
+                
                 for event in ser:
                     event_time = event.time
                     active_infected = event.nI + event.nE
@@ -185,7 +187,7 @@ class StatsProcessor():
                 current_stats = accumulator[i]
                 stats_for_timed_parameters.append(get_statistics(current_stats, compute='mean', axis=1, avg_without_idx=without_idx))
                 stats_for_laststamp.append(get_statistics(current_stats[-1], compute='all', avg_without_idx=without_idx)[0])
-                
+                                
             # compute averages and other statistics for the peak simulation results
             stats_for_max_inf = get_statistics(i_max, compute='all', avg_without_idx=without_idx)[0]
             stats_for_timeofmax_inf = get_statistics(i_timeofmax, compute='mean+wo', avg_without_idx=without_idx)[0]
@@ -257,7 +259,7 @@ class StatsProcessor():
             current['active-growth'] = stats_for_active_growth
 
         if printit:
-            # if printit is 1 and nettype is a predefined supplied network (i.e. not a str), the value in the summary dict will be overwritten
+            # if printit is 1 and nettype is a predefined supplied network (i.e. not a str), the repr of the net in the summary will be overwritten to reduce space
             if printit == 1 and not isinstance(summary['args']['nettype'], str):
                 summary['args']['nettype'] = 'predefined'
             print(json.dumps(summary, cls=ut.NumpyEncoder))

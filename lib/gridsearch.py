@@ -4,17 +4,17 @@ from sklearn.model_selection import ParameterGrid
 
 
 pa_vals = [.2]
-tau_vals = np.array([.1, .5, 1., 1.5, 2.])
+tau_vals = np.array([.1, .2, .5, 1., 1.5, 2.])
 GRID = [
     # When taut = 0, it does not matter whether its dual/triad, or the degree of overlap/uptake (so make them 1)
-    {'uptake': [1],
-     'taut': [0],
-     'taur': tau_vals,
-     'pa': pa_vals,
-     'overlap': [1],
-     'dual': [1],
-    },
-    # When taut != 0 and dual=1 scenario, try all overlaps OR uptakes
+#     {'uptake': [1],
+#      'taut': [0],
+#      'taur': tau_vals,
+#      'pa': pa_vals,
+#      'overlap': [1],
+#      'dual': [1],
+#     },
+    # When taut != 0 and dual=1 scenario, try all overlaps OR uptakes (used for digital tracing only)
     {'uptake': np.linspace(.1, 1., 7),
      'taut': [10],
      'taur': tau_vals,
