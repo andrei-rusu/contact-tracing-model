@@ -125,10 +125,10 @@ class Simulation():
         traced_inf = []
         for nid in node_list:
             # check if there is any tracing function instantiated before collecting non-traced points
-            # if trace_after == -1 -> trace a node only if its NOT present in traced_time: aka never traced or legally exited isolation
-            # if trace_after != -1 -> make tracing same node possible only after a time delay trace_after since becoming noncompliant N
+            # if trace_after is None -> trace a node only if its NOT present in traced_time: aka never traced or legally exited isolation
+            # if trace_after not None -> make tracing same node possible only after a time delay trace_after since becoming noncompliant N
             if trace_funcs and not node_traced[nid] and node_states[nid] in trace_funcs \
-            and ((trace_after != -1 and time - noncomp_time.get(nid, time) > trace_after) or not nid in traced_time):
+            and ((trace_after is not None and time - noncomp_time.get(nid, time) > trace_after) or not nid in traced_time):
                 not_traced_inf.append(nid)
             # check if there is a noncompliance rate func before collecting the traced points that are actually "dangerous"
             elif noncompliance_rate_func and node_traced[nid] and node_states[nid] in trace_funcs:
@@ -238,10 +238,10 @@ class Simulation():
                     lamdas[nid].append((rate_func(net, nid), to))
             
             # check if there is any possible tracing before updating the tracing possible transitions lists
-            # if trace_after == -1 -> trace a node only if its NOT present in traced_time: aka never traced or legally exited isolation
-            # if trace_after != -1 -> make tracing same node possible only after a time delay trace_after since becoming noncompliant N
+            # if trace_after is None -> trace a node only if its NOT present in traced_time: aka never traced or legally exited isolation
+            # if trace_after not None -> make tracing same node possible only after a time delay trace_after since becoming noncompliant N
             if trace_funcs and not current_traced and current_state in trace_funcs \
-            and ((trace_after != -1 and time - noncomp_time.get(nid, time) > trace_after) or not nid in traced_time):
+            and ((trace_after is not None and time - noncomp_time.get(nid, time) > trace_after) or not nid in traced_time):
                 for trace_net in tracing_nets:
                     lamdas[nid].append((trace_funcs[current_state](trace_net, nid), traced_state))
                 

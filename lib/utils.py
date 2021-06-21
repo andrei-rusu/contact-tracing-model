@@ -421,7 +421,8 @@ def rel(*modules):
      
     
 # prints all variables specified in the current frame and their value
-def pvar(*var, owners=True):
+# owning frames can also be displayed, not-set values can be overwritten if =nanValue
+def pvar(*var, owners=True, nanValue=None):
     frame = inspect.currentframe().f_back
     s = inspect.getframeinfo(frame).code_context[0]
     r = re.search(r"\((.*)\)", s).group(1)
@@ -431,6 +432,8 @@ def pvar(*var, owners=True):
         if x == '\n':
             print()
         else:
+            if x == nanValue:
+                x = 'NotYetDefined'
             if not owners:
                 fi[i] = fi[i].split('.')[-1]
             format_to_print = "{} = {}, "

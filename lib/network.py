@@ -165,7 +165,7 @@ class Network(nx.Graph):
         # If we are interested in maintaining the overlap, then the correct z_add and z_rem will be calculated based on the params
         if conserve_overlap:
             # If no overlap value, use z_add & z_rem
-            if overlap is None:
+            if overlap is None or overlap == -1:
                 # Average degree k, z_add, z_rem used to calculate overlap after noising
                 self.overlap = get_overlap_for_z(k, z_add, z_rem)
             # If overlap given, calculate z_add and z_rem; SUPPLIED z_add and z_rem are mostly IGNORED

@@ -44,7 +44,8 @@ class StatsProcessor():
         # local for efficiency
         args = self.args
         efforts = args.efforts
-        first_inf = args.first_inf
+        # turn first_inf into an absolute number if it's a percentage by this point (happens only if predefined net with no nid)
+        first_inf = args.first_inf = int(args.first_inf if args.first_inf >= 1 else args.first_inf * args.netsize)
         
         summary = defaultdict(dict)
         summary['args'] = vars(args).copy()
@@ -60,12 +61,24 @@ class StatsProcessor():
         summary['args']['r0'] = contacts_scaler * args.beta / infectious_time_rate
         
         if args.dual:
-            # If dual=True, true overlap is EITHER the inputted overlap OR (k-zrem)/(k+zadd)
-            summary['args']['true-overlap'] = \
-                ut.get_overlap_for_z(args.k, args.zadd, args.zrem) if args.overlap is None else args.overlap
+            if args.maintain_overlap:
+                # If dual=True, true overlap is EITHER the inputted overlap OR (k-zrem)/(k+zadd)
+                summary['args']['true-overlap'] = \
+                    ut.get_overlap_for_z(args.k, args.zadd, args.zrem) if args.overlap is None else args.overlap
+            else:
+                summary['args']['true-overlap'] = -1 # this effectively means the overlap was ignored
+                
+            if args.dual == 2 and args.maintain_overlap_two:
+                summary['args']['true-overlap-two'] = \
+                    ut.get_overlap_for_z(args.k, args.zadd_two, args.zrem_two) if args.overlap_two is None else args.overlap_two
+            else:
+                summary['args']['true-overlap-two'] = -1
         else:
             # when single network run (i.e. dual=False), the true overlap is 1 since all the dual configs are ignored
             summary['args']['true-overlap'] = 1
+            # we also mark the true overlap of the second dual network as effectively inexistent/ignored
+            summary['args']['true-overlap-two'] = -1
+        
         
         for param, results_for_param in self.param_res.items():
             
@@ -259,7 +272,8 @@ class StatsProcessor():
             current['active-growth'] = stats_for_active_growth
 
         if printit:
-            # if printit is 1 and nettype is a predefined supplied network (i.e. not a str), the repr of the net in the summary will be overwritten to reduce space
+            # if printit is 1 and nettype is a predefined supplied network (i.e. not a str), 
+            # the repr of the net in the summary will be overwritten to reduce the output space
             if printit == 1 and not isinstance(summary['args']['nettype'], str):
                 summary['args']['nettype'] = 'predefined'
             print(json.dumps(summary, cls=ut.NumpyEncoder))

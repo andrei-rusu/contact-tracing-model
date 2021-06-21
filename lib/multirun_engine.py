@@ -42,6 +42,8 @@ class EngineNet(Engine):
         
         # will hold all network events
         net_events = defaultdict()
+        # whether return of netstate is needed from this step (only in the case of predefined networks)
+        netstate_return = False
         
         # initialize the true network seed to None
         net_seed = None
@@ -55,23 +57,27 @@ class EngineNet(Engine):
         # if the net is predefined, we also seed here the first_inf_nodes (this is because we did not have access to the list of nodes prior to this point)
         try:
             true_net = network.get_from_predef(nettype['0'][0], inet=inet, W_factor=nettype.get('Wi', 0), **args_dict)
-            # update the average degree k and add new k_i parameter
-            args.k = true_net.avg_degree()
-            # add a special new parameter which will track all average weights (with and without weighs)
-            args.k_i = {
-                '0': (args.k, true_net.avg_degree(use_weights=True))
-            }
+            # if we didn't set the netsize, it means that 'nid' was not supplied in the dict
+            # so we assume only the nodes in the edges supplied are nodes in this network
+            if args.netsize == -1:
+                args.netsize = len(true_net.nodes)
+                args.k = true_net.avg_degree()
+                netstate_return = True
+            # if NO compute distribution was enabled, we can use args (since it is not deepcopied) to track all average weights
+            if not args.multip:
+                args.k_i = {
+                    '0': (args.k, true_net.avg_degree(use_weights=True))
+                }
         # TypeError: nettype is a str, KeyError: key '0' is not in the dynamic dict, IndexError: element 0 (inf net) not in list
-        # note that in this block we no longer need to define the first_inf nodes because they have already been sampled prior to the main loop for random graphs
         except (TypeError, KeyError, IndexError):
+            # args_dict should also contain the netsize and the average degree
             true_net = network.get_random(typ=nettype, nseed=net_seed, inet=inet, **args_dict)
             
-        # first_inf_nodes could have been calculated by this point if random network or 'nid' key was supplied in args.nettype
+        # first_inf_nodes could have been calculated by this point if an infseed was supplied, and
+        # we deal with random network OR 'nid' key was supplied in the predefined network of args.nettype
         if first_inf_nodes is None:
-            # need to update the network size which has to reflect the true network created
-            args.netsize = len(true_net)
-            # turn first_inf into an absolute number if it's a percentage - the absolute number of args.first_inf will be used later for statistics
-            args.first_inf = int(args.first_inf) if args.first_inf >= 1 else int(args.first_inf * args.netsize)
+            # turn first_inf into an absolute number if it's a percentage by this point (happens only if predefined net with no nid)
+            args.first_inf = int(args.first_inf if args.first_inf >= 1 else args.first_inf * args.netsize)
             # Random first infected across simulations - seed random locally
             first_inf_nodes = random.Random(net_seed).sample(true_net.nodes, args.first_inf)
                 
@@ -86,10 +92,10 @@ class EngineNet(Engine):
 #         print(2, true_net.node_counts[2])
 
         if args.dual:
-            
             # the dual network is either predefined in the second element of args.nettype or initialized at random
             try:
-                know_net = network.get_dual_from_predef(true_net, nettype['0'][1], count_importance=tr_rate, W_factor=nettype.get('Wt', 0), **args_dict)
+                know_net = network.get_dual_from_predef(true_net, nettype['0'][1], count_importance=tr_rate, 
+                                                        W_factor=nettype.get('Wt', 0), **args_dict)
             except (TypeError, KeyError, IndexError):
                 # First dual net depends on both overlap and uptake (this is usually the digital contact tracing net)
                 # Note this will also copy over the states, so no need to call change_state
@@ -99,11 +105,14 @@ class EngineNet(Engine):
             # if 2 dual networks selected, create the second network and add both to a ListDelegator
             if args.dual == 2:
                 try:
-                    know_net_two = network.get_dual_from_predef(true_net, nettype['0'][2], count_importance=args.taut_two, W_factor=nettype.get('Wt2', 0), **args_dict)
+                    know_net_two = network.get_dual_from_predef(true_net, nettype['0'][2], count_importance=args.taut_two,
+                                                                W_factor=nettype.get('Wt2', 0), **args_dict)
                 except (TypeError, KeyError, IndexError):
-                    # Second tracing net attempt to maintain overlap_two (this is usually the manual tracing net, uptake may not make sense here)
+                    # Second tracing net attempt to maintain overlap_two (this is usually the manual tracing net, 
+                    # uptake may not make sense for manual tracing
                     # Note this will also copy over the states, so no need to call change_state
-                    know_net_two = network.get_dual(true_net, args.overlap_two, args.zadd_two, args.zrem_two, args.uptake_two, args.maintain_overlap_two,
+                    know_net_two = network.get_dual(true_net, args.overlap_two, args.zadd_two, args.zrem_two, 
+                                                    args.uptake_two, args.maintain_overlap_two,
                                                     nseed=net_seed+2, inet=inet, count_importance=args.taut_two, **args_dict)
 
                 # know_net becomes a ListDelegator of the 2 networks
@@ -157,9 +166,14 @@ class EngineNet(Engine):
                 print('---> Result:' + str(total_inf) + ' total infected persons over time.')
                 
         if return_last_net:
-            return net_events, true_net, know_net
-                
-        return net_events
+            return net_events, (true_net, know_net)
+        
+        if netstate_return:
+            # we may not know about netsize and k by this point, and if Nets are distributed, args will be deepcopied
+            # therefore we need to return the inferred netsize and k here from the local args
+            return net_events, (args.netsize, args.k)
+        
+        return net_events, None
 
     
 class EngineDual(Engine):
@@ -284,7 +298,7 @@ class EngineDual(Engine):
                 
                 # if the event chosen is a tracing event, separate logic follows (NOT updating event.FROM counts!)
                 is_trace_event = (e.to == 'T')
-                # exception: if trace_h selected, the node will be counted as traced if going to H (but will never become noncompliant)
+                # exception: if trace_h selected, the node will be counted as traced if going to H (can never become noncompliant)
                 if is_trace_event or (args.trace_h and e.to == 'H'):
                     # the update to total traced counts is done only once (ignore if same nid is traced again)
                     if e.node not in true_net.traced_time:
@@ -383,14 +397,14 @@ class EngineDual(Engine):
             current_time = e.time
             # if args.noncomp_after selected, nodes that have been isolating for longer than noncomp_after become automatically N
             # This is currently supported ONLY FOR args.separate_traced == True
-            if noncomp_after and separate_traced:
+            if noncomp_after is not None and separate_traced:
                 node_traced = true_net.node_traced
                 node_states = true_net.node_states
                 traced_time = true_net.traced_time
                 for nid in true_net.node_list:
                     if node_traced[nid] and (current_time - traced_time[nid] >= noncomp_after):
                         event = sim_true.get_event_with_config(node=nid, fr='T', to='N', time=current_time)
-                        # we remove nid from traced_time to stop it from influencing the tracing chances of its neighbors after isolation exit
+                        # remove nid from traced_time to stop it from influencing the tracing chances of its neighbors after isolation exit
                         sim_true.run_trace_event_for_infect_net(event, to_traced=False, legal_isolation_exit=True)
                         sim_know.run_trace_event_for_trace_net(event, to_traced=False, legal_isolation_exit=True)
             
@@ -432,11 +446,14 @@ class EngineDual(Engine):
                 
             # allow for dynamic updates of the network to occur after update_after days IF ANY PROVIDED
             if args.is_dynamic and current_time >= args.update_after * update_iter:
-                # the current_time may correspond to an update further ahead than update_iter, therefore we need to update update_iter accordingly
-                update_iter = int(current_time // args.update_after)
+                # IF update_after is given as an Integer, we interpret updates as happening after full DAYS
+                # In this case, the current_time may correspond to an update DAY further ahead than update_after, 
+                # therefore we need to modify update_iter accordingly
+                if isinstance(args.update_after, int):
+                    update_iter = int(current_time // args.update_after)
                 nettype = args.nettype
                 try:
-                    # nettype should contain keys [1,2,3] corresponding to update times mapped to dynamic update sequences for each network
+                    # nettype should contain keys [1,...] corresponding to update times mapped to dynamic-update sequences
                     edges_to_update = nettype[str(update_iter)]
                     if edges_to_update:
                         inf_update = edges_to_update[0]
@@ -463,18 +480,19 @@ class EngineDual(Engine):
                                         node_list.remove(nid)
                                         # mark orphan as traced
                                         true_net.node_traced[nid] = True
-                            # update active node_list without losing the pointer -> this will allow tracing nets to see the update as well
+                            # update active node_list without losing the pointer; this will allow tracing nets to see updates
                             true_net.node_list.clear()
                             true_net.node_list.extend(node_list)
                             # update counts without traced
                             true_net.update_counts()
-                            # keep track of new average degrees
-                            args.k_i[str(update_iter)] = (true_net.avg_degree(), true_net.avg_degree(use_weights=True))
+                            # keep track of new average degrees IF no distribution was enabled (making args SHARED)
+                            if not args.multip:
+                                args.k_i[str(update_iter)] = (true_net.avg_degree(), true_net.avg_degree(use_weights=True))
                         
                         len_edges = len(edges_to_update)
                         # if edges have also been supplied for the dual networks, they will appear starting from index 1
                         if len_edges > 1:
-                            # how many iters are executed depend on how many dual networks and how big the list of dynamic updates actually is
+                            # how many iters are executed depend on how many dual networks and how large the list of updates is
                             execute_iters = ceil(args.dual * (len_edges - 1) / 2) + 1
                             # update if we have any entry for the tracing nets dynamic links
                             for i in range(1, execute_iters):
@@ -712,7 +730,7 @@ class EngineOne(Engine):
             current_time = e.time
             # if args.noncomp_after selected, nodes that have been isolating for longer than noncomp_after become automatically N
             # This is currently supported ONLY FOR args.separate_traced == True
-            if noncomp_after and separate_traced:
+            if noncomp_after is not None and separate_traced:
                 node_traced = true_net.node_traced
                 node_states = true_net.node_states
                 traced_time = true_net.traced_time
@@ -759,10 +777,15 @@ class EngineOne(Engine):
                 break
                 
             # allow for dynamic updates of the network to occur after update_after days IF ANY PROVIDED
-            nettype = args.nettype
             if args.is_dynamic and current_time >= args.update_after * update_iter:
+                # IF update_after is given as an Integer, we interpret updates as happening after full DAYS
+                # In this case, the current_time may correspond to an update DAY further ahead than update_after, 
+                # therefore we need to modify update_iter accordingly
+                if isinstance(args.update_after, int):
+                    update_iter = int(current_time // args.update_after)
+                nettype = args.nettype
                 try:
-                    # nettype should contain keys [1,2,3] corresponding to update times mapped to dynamic update sequences for each network
+                    # nettype should contain keys [1,...] corresponding to update times mapped to dynamic-update sequences
                     edges_to_update = nettype[str(update_iter)]
                     if edges_to_update:
                         inf_update = edges_to_update[0]
@@ -793,6 +816,8 @@ class EngineOne(Engine):
                             true_net.node_list.extend(node_list)
                             # update counts without traced
                             true_net.update_counts()
+                            # keep track of new average degrees
+                            args.k_i[str(update_iter)] = (true_net.avg_degree(), true_net.avg_degree(use_weights=True))
                 
                 # If the specified key cannot be found, then there is no dynamic edge update for this time id
                 except KeyError:

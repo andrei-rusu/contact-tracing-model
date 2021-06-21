@@ -52,9 +52,9 @@ PARAMETER_DEFAULTS = {
     'isolate_s': True,
     # whether to mark hospitalized as traced
     'trace_h': False,
-    # if -1 a node can become traced again only after exiting self-isolation
-    # not -1 a node can become traced again after this amount of time (in days) has elapsed after becoming ilegally N
-    'trace_after': 14,
+    # if -1/None a node can become traced again only after exiting self-isolation
+    # not -1/None a node can become traced again after this amount of time (in days) has elapsed after becoming ilegally N
+    'trace_after': 7,
 
     ### Disease-specific parameters that are common for multiple models:
     # transmission rate -> For Covid, 0.0791 correponding to R0=3.18
@@ -84,7 +84,7 @@ PARAMETER_DEFAULTS = {
     # contact-tracing rates for first & second tracing networks (if exists)
     'taut': 0.1, 'taut_two': -1.,
     # number of days of delay on second tracing network compared to first one
-    # this is taken into account only if taut_two==-1
+    # this is taken into account only if taut_two==-1/None
     'delay_two': 2.,
     # noncompliance rate; Note this ONLY works for args.separate_traced=True
     # each day the chance of going out of isolation increases by x%
@@ -92,25 +92,25 @@ PARAMETER_DEFAULTS = {
     # whether the noncomp rate gets multiplied by time difference t_current - t_trace
     'noncomp_dependtime': True,
     # period after which T becomes automatically N (nonisolating); Note this ONLY works for args.separate_traced=True
-    # 0 means disabled; 14 is standard quarantine
-    'noncomp_after': 0,
+    # -1/None means disabled; 14 is standard quarantine
+    'noncomp_after': -1,
 
     ### Simulation controlling parameters
     # running number of nets, iterations per net and events for each
     # nevents == 0, run until no more events
-    'nnets': 1, 'niters': 1, 'nevents': 0,
+    'nnets': 1, 'niters': 1, 'nevents': -1,
     # seed of simulation exponentials; the seed for network initializations; and the first infected seed
     # if -1, both seed and netseed default to None, whereas infseed is ignored (and netseed gets used for sampling the first infected)
     # except for infseed (and only in the case of a positive value), neither seed gets used directly, rather they get incremented by iterators
     'seed': -1, 'netseed': -1, 'infseed': -1,
     # 0 - no multiprocess, 1 - multiprocess nets, 2 - multiprocess iters, 3 - multiprocess nets and iters (half-half cpus)
-    'multip': 1,
+    'multip': 0,
     # dir: the exponential is sampled DIRECTLY from the function registered on the transition object
     # each: the transition obj registers only the lambda rates, the exponential is sampled FOR EACH lambda with exp_sampler.py
     # min: Gillespie's algorithm; the transition obj registers the lambda rates, ONLY the MINIMUM exponential is sampled based on sum
     'sampling_type': 'dir',
-    # number of stateless exponential presamples (if 0, no presampling)
-    'presample': 0,
+    # number of stateless exponential presamples (if -1/None/0, no presampling)
+    'presample': -1,
     # whether or not to remove orphans from the infection network (they will not move state on the infection net)
     'rem_orphans': False,
     # if rem_orphans, noising of links can be calculated either based on the full node list or the active nonorphan list through this param
@@ -119,7 +119,7 @@ PARAMETER_DEFAULTS = {
     'efforts': False,
 
     ### Summary-related parameters
-    # -1 -> full_summary never called; 0 -> no summary printing, 1 -> print summary as well
+    # -1/None -> full_summary never called; 0 -> no summary printing, 1 -> print summary as well
     'summary_print': -1,
     # how many time splits to use for the epidemic summary
     'summary_splits': 1000,
@@ -148,34 +148,36 @@ def main(args):
     
     ### This block of code is concerned with overwriting in a sensible manner args arguments, based on incomaptibilities and other criteria
     
-    # if the special 'socialevol' value was supplied for nettype, the argument will be overwritten with data coming from the Social Evolution dataset
-    # this is an easy hook point to supply own logic for loading custom datasets
-    if args.nettype.startswith('socialevol'):
-        # allow update_after (used to indicate when dynamic edge updates happen) to influence the aggregation of data (either weekly or daily)
-        agg = 'W' if args.update_after > 3 else 'D'
-        # proximity probability filtering can be specified after ':'
-        options = args.nettype.split(':')
-        # defaults
-        proxim_prob = None
-        time_fr, time_to = '2009-01-05', '2009-06-14'
-        use_week_index = False
-        try:
-            proxim_prob = float(options[1])
-        except (IndexError, ValueError):
-            pass
-        try:
-            time_options = options[2].split(',')
-            time_fr = int(time_options[0])
-            time_to = int(time_options[1])
-            use_week_index = (time_options[2].lower() == 'w')
-        except (IndexError, ValueError):
-            pass
-        # this effectively reads out the data file and does initial filtering and joining
-        loader = DataLoader(agg=agg, proxim_prob=proxim_prob)
-        # supply to the args.nettype a dictionary, with keys being 'nid', 'Wi', 'Wt' (if which_tr>=0), and '0', '1', '2'
-        # corresponding to the timestamp of the specific dynamical edge update
-        # note that the code also supports custom tracing networks (in the SocialEvol example, choose which_tr>=0 for this scenario to take effect)
-        args.nettype = loader.get_edge_data_for_time(which_inf=0, which_tr=None, time_to=time_to, time_fr=time_fr, use_week_index=use_week_index)
+    # this is an easy hook point to supply own logic for loading custom datasets through special strings supplied
+    if isinstance(args.nettype, str):
+        if args.nettype.startswith('socialevol'):
+            # allow update_after (used to indicate when dynamic edge updates happen) to influence the aggregation 
+            # of data (either weekly or daily)
+            agg = 'W' if args.update_after > 3 else 'D'
+            # proximity probability filtering can be specified after ':'
+            options = args.nettype.split(':')
+            # defaults
+            proxim_prob = None
+            time_fr, time_to = '2009-01-05', '2009-06-14'
+            use_week_index = False
+            try:
+                proxim_prob = float(options[1])
+            except (IndexError, ValueError):
+                pass
+            try:
+                time_options = options[2].split(',')
+                time_fr = int(time_options[0])
+                time_to = int(time_options[1])
+                use_week_index = (time_options[2].lower() == 'w')
+            except (IndexError, ValueError):
+                pass
+            # this effectively reads out the data file and does initial filtering and joining
+            loader = DataLoader(agg=agg, proxim_prob=proxim_prob)
+            # supply to the args.nettype a dictionary, with configuration keys being 'nid', 'Wi', 'Wt' (if which_tr>=0), 
+            # and time keys '0', '1', '2' corresponding to the timestamp of the specific dynamical edge update
+            # note that the code also supports custom tracing networks (in this SocialEvol example, choose which_tr>=0 for this)
+            args.nettype = loader.get_edge_data_for_time(which_inf=0, which_tr=None, time_to=time_to, 
+                                                         time_fr=time_fr, use_week_index=use_week_index)
             
     # if animation of the infection progress is selected, disable all prints and enable both draw types
     if args.animate:
@@ -186,26 +188,29 @@ def main(args):
     else:
         ut.enable_print()
         
-    # the following step ensures that unselected seeds are turned to None
-    if args.seed == -1: args.seed = None
-    if args.netseed == -1: args.netseed = None
+    # the following step ensures that unselected (-1) parameters are turned to None
+    args_dict = vars(args)
+    for argkey, argvalue in args_dict.items():
+        if argvalue == -1: args_dict[argkey] = None
         
     # default the number of first infected nodes to None, and assume for now we know the nodes of the inf network
     is_nids_known = True
     first_inf_nodes = None
     
-    # reflect in the netsize and the is_dynamic param the fact that we may have supplied a predefined infection network through args.nettype
+    # reflect in the netsize and the is_dynamic param the fact that we may have supplied a predefined infection network 
+    # through args.nettype, or a predefined network was loaded in through a special str supplied through this parameter
     if '0' in args.nettype:
         try:
             nodes = args.nettype['nid']
             args.netsize = len(nodes)
-        except KeyError:
-            args.netsize = 'To be inferred'
+            # average degree is 2 * num_edges / num_nodes
+            args.k = 2 * len(args.nettype['0'][0]) / args.netsize
+        except (KeyError, IndexError):
+            # if nids or edges for time 0 of inf net not supplied, we assume we do not know the netsize or the degree yet
+            args.netsize = args.k = -1
             is_nids_known = False
         # the graph is dynamic if any update excepting '0' exists, and the option is turned on through update_after
-        args.is_dynamic = (args.update_after > 0 and len(args.nettype) > 1)
-        # we also do not know the average degree by this point
-        args.k = 'To be inferred'
+        args.is_dynamic = (args.update_after is not None and len(args.nettype.keys()) > 1)
     # else branch is for random networks, and the nids will be generated based on the range of args.netsize
     else:
         nodes = range(args.netsize)
@@ -214,13 +219,15 @@ def main(args):
     # this branch is for random graphs, which are not dynamic and for which we can use args.netsize to sample the first infected
     # OR for predefined networks that have the 'nid' supplied
     # Note that an 'infseed' also needs to be supplied; if not, the first infected will be sampled at network creation time
-    # being sampled at net creation time, the first infected become dependent on the args.netseed + network_index (so can be DIFFERENT for each net!)
-    if is_nids_known and args.infseed != -1:
+    # being sampled at net creation time, the first infected become dependent on the args.netseed + network_index 
+    # and therefore they can be DIFFERENT for each network (good for averaging purposes)
+    if is_nids_known:
         # update number of first infected to reflect absolute values rather than percentage
         # if args.first_inf >= 1 just turn the value into an int and use that as number of first infected
-        args.first_inf = int(args.first_inf) if args.first_inf >= 1 else int(args.first_inf * args.netsize)
-        # Random first infected across simulations - seed random locally
-        first_inf_nodes = random.Random(args.infseed).sample(nodes, args.first_inf)
+        args.first_inf = int(args.first_inf if args.first_inf >= 1 else args.first_inf * args.netsize)
+        if args.infseed is not None:
+            # Random first infected across simulations - seed random locally
+            first_inf_nodes = random.Random(args.infseed).sample(nodes, args.first_inf)
 
     
     # Turn off multiprocessing if only one net and one iteration selected
@@ -264,7 +271,7 @@ def main(args):
     rel_taur = args.rel_taur
     presample = args.presample
     # if no taut_two set, delay_two will be used together with all the given taut rates to compute the taut_two rates 
-    set_taut_two = (args.taut_two < 0)
+    set_taut_two = (args.taut_two is None)
     # we can simulate with a range of tracing rates or with a single one, depending on args.taut supplied
     tracing_rates = np.atleast_1d(args.taut)
     for taut in tracing_rates:
@@ -272,9 +279,13 @@ def main(args):
         
         print('=========================================================')
         print('Running simulation with parameters:')
-        ut.pvar(args.netsize, args.k, args.dual, args.model, owners=False)
-        ut.pvar(args.overlap, args.uptake, args.maintain_overlap, owners=False)
-        ut.pvar(taut, taur, args.noncomp, args.noncomp_dependtime, owners=False)
+        if args.netsize == -1:
+            print('WARNING: A predefined network was selected, but node ids were NOT supplied')
+        ut.pvar(args.netsize, args.k, args.dual, args.model, owners=False, nanValue=-1)
+        ut.pvar(args.overlap, args.uptake, args.maintain_overlap, owners=False, nanValue=-1)
+        if args.dual == 2:
+            ut.pvar(args.overlap_two, args.uptake_two, args.maintain_overlap_two, owners=False, nanValue=-1)
+        ut.pvar(taut, taur, args.noncomp, args.noncomp_dependtime, owners=False, nanValue=-1)
         print('=========================================================\n')
         
         # a random tracing rate is needed before any tracing can happen
@@ -321,21 +332,22 @@ def main(args):
         engine = EngineNet(args=args, first_inf_nodes=first_inf_nodes, no_exposed=no_exposed, is_covid=is_covid,
                            tr_rate=taut, trans_true_items=trans_true_items, trans_know_items=trans_know_items)
 
-        if args.multip == 1:
-            with Pool() as pool:
-                for inet, net_events in enumerate(ut.tqdm_redirect(pool.imap(engine, net_range), total=nnets,
+        
+        # for args.multip == 1 or 3, distribution over networks will be performed (either exclusively or inclusively)
+        if args.multip in (1, 3):
+            # get the current cpu count
+            cpus = int(cpu_count())
+            # we use normal Pool for distributing only the networks, but NoDaemonPool if we distribute both networks and iters
+            # in the first case we use the full cpu count, in the latter we use just a half to allow for iters to be distributed
+            pool_type, jobs = (Pool, cpus) if args.multip == 1 else (ut.NoDaemonPool, cpus // 2)
+            with pool_type(jobs) as pool:
+                for inet, (net_events, net_info) in enumerate(ut.tqdm_redirect(pool.imap(engine, net_range), total=nnets,
                                                                 desc='Networks simulation progress')):
                     # Record sim results
                     stats.sim_summary[inet] = net_events
-                    
-        elif args.multip == 3:
-            # allocate half cpus to joblib for parallelizing simulations for different network initializations
-            jobs = int(cpu_count() / 2)
-            with ut.NoDaemonPool(jobs) as pool:
-                for inet, net_events in enumerate(ut.tqdm_redirect(pool.imap(engine, net_range), total=nnets,
-                                                                desc='Networks simulation progress')):
-                    # Record sim results
-                    stats.sim_summary[inet] = net_events
+                    # Make sure the network-related info in args is updated IF no netsize could be inferred at start time
+                    if args.netsize == -1: 
+                        args.netsize, args.k = net_info
                     
 #             with ut.tqdm_joblib(tqdm(desc='Networks simulation progress', file=stdout, total=nnets)), \
 #                 Parallel(n_jobs=jobs) as parallel:
@@ -346,8 +358,8 @@ def main(args):
             for inet in net_range:
                 print('----- Simulating network no.', inet, '-----')
 
-                # Run simulation
-                net_events, true_net, know_net = engine(inet, return_last_net=True)
+                # Run simulation, and since no distribution required, return the last networks for inspection purposes
+                net_events, (true_net, know_net) = engine(inet, return_last_net=True)
 
                 # Record sim results
                 stats.sim_summary[inet] = net_events
@@ -355,7 +367,7 @@ def main(args):
                     
         stats.results_for_param(taut)
         
-    if args.summary_print != -1:
+    if args.summary_print is not None:
         return stats.full_summary(args.summary_splits, args.summary_print, args.r_window)
 
     return stats, true_net, know_net
