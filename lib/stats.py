@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, Counter
 import numpy as np
 import json
 
@@ -254,6 +254,8 @@ class StatsProcessor():
 
             current['average-total-false-traced'] = stats_for_timed_parameters[10]
             current['average-overall-false-traced'] = stats_for_laststamp[10]
+            # the total of correctly traced individuals is the difference between the overall traced and the falsely traced nodes
+            current['average-overall-true-traced'] = dict(Counter(current['average-overall-traced']) - Counter(current['average-overall-false-traced']))
             
             current['average-total-false-negative'] = stats_for_timed_parameters[11]
             current['average-overall-false-negative'] = stats_for_laststamp[11]
@@ -266,9 +268,14 @@ class StatsProcessor():
             
             # This is based on Tsimring and Huerta 2002
             current['r-trace'] = contacts_scaler * args.beta / (infectious_time_rate + args.beta + args.taur *
-                                                                (1 + current['average-overall-traced']['mean']/current['average-overall-infected']['mean']))
+                                                                (1 + current['average-overall-true-traced']['mean'] / current['average-overall-infected']['mean']))
             # growth rates based on r_window
             current['growth'] = stats_for_growth
+            # for COVID models, we can also compute R_eff during the first period of the simulation from the growth recorded within the same period
+            # since we know both the mean and shape of the generation time ditribution
+            if args.model == 'covid':
+                # we want R to reflect the r_window chosen and be corresponding to the first estimate of the growth
+                current['r-eff'] = ut.r_from_growth(stats_for_growth[0]['mean'], method='exp', t=r_window, mean=6.6, shape=1.87, inv_scale=0.28)
             current['active-growth'] = stats_for_active_growth
 
         if printit:

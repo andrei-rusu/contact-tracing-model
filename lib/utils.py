@@ -49,7 +49,7 @@ def is_not_empty(lst):
 
 def r_from_growth(growth, method='exp', t=7, mean=6.6, shape=1.87, inv_scale=0.28):
     """
-    Get r from growth rate (NOT exponential) assuming Gamma distribution of generation time
+    Get r from growth rate (NOT exponential growth) assuming Gamma distribution of generation time
     """
     if method == 'exp':
         if inv_scale is None:
