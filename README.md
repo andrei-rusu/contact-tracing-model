@@ -4,11 +4,11 @@ A <b>multi-site mean-field model</b> for studying the effects of different "test
 
 SEIR-T is a compartmental formulation that describes SARS-Cov-2 transmission and the corresponding contact tracing in terms of network-defined neighborhoods.
 
-Link to original study: <a href="https://www.dropbox.com/s/p1kyfmfx58d2b3v/Contact_Tracing.pdf" target="_blank">Rusu et al., 2020</a>
+Link to original study: <a href="medrxiv.org/content/10.1101/2021.04.29.21256307v1.full.pdf" target="_blank">Rusu et al., 2020</a>
 
 <br />
 
-<p style="text-align:center;"><a href="medrxiv.org/content/10.1101/2021.04.29.21256307v1.full.pdf" target="_blank"><img src="fig/noncomp.gif"/></a></p>
+<p style="text-align:center;"><a href="https://www.dropbox.com/s/m284tx8tmgeckqk/noncomp.mp4?dl=0" target="_blank"><img src="fig/noncomp.gif"/></a></p>
 
 
 
