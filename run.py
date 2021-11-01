@@ -1,12 +1,12 @@
 import argparse
 import random
 import numpy as np
+from collections.abc import Iterable
 
 from multiprocessing import cpu_count
 from multiprocess.pool import Pool
 
 from lib import utils as ut
-    
 from lib.stats import StatsProcessor
 from lib.models import get_transitions_for_model, add_trans
 from lib.multirun_engine import EngineNet
@@ -15,60 +15,62 @@ from lib.data_utils import DataLoader
 # Covid infection-related parameters according to DiDomenico et al. 2020
 # https://bmcmedicine.biomedcentral.com/articles/10.1186/s12916-020-01698-4#additional-information
 PARAMETER_DEFAULTS = {
-    ### Network related parameters:
-    # network wiring type: this can either be a STR with the name of the random graph
-    # or a LIST of predefined networks for infection, tracing or both
-    # if its LIST, it can also contain lists of edges to be added dynamically (based on 'update_after' param)
+    #### Network related parameters:
+    ## network wiring type; this can be one of the following: 
+    # - a STR with the name of a random graph model (e.g. random, barabasi, ws, powerlaw-cluster) OR a predefined dataset (SocialEvol)
+    # - an Iterable of edges (including nx.Graph objects)
+    # - a DICT mapping integer timestamps (0,1,...) to LISTS of predefined networks - infection, tracing #1, tracing #2
+    # for DICT the 'update_after' param dictates when each integer key becomes 'active', thus changing the network wiring (dynamic)
     'nettype': 'random',
-    # net size & avg degree & rewire prob for various graph types - these only have EFFECT IF nettype is a known net type given as STR
+    ## net size & avg degree & rewire prob for various graph types - these only have EFFECT IF nettype is a known net type given as STR
     'netsize': 1000, 'k': 10, 'p': .05,
-    # controls whether edge weights matter and their normalising factor (only has effect when networks with edges have been provided)
+    ## controls whether edge weights matter and their normalising factor (only has effect when networks with edges have been provided)
     'use_weights': False, 'K_factor': 10,  # if K_factor = 0, no normalization of weights happens
-    # 0 - tracing happens on same net as infection, 1 - one dual net for tracing, 2 - two dual nets for tracing
+    ## 0 - tracing happens on same net as infection, 1 - one dual net for tracing, 2 - two dual nets for tracing
     'dual': 1,
-    # overlaps for tracing nets (second is used only if dual == 2)
+    ## overlaps for tracing nets (second is used only if dual == 2)
     'overlap': .8, 'overlap_two': .4,
-    # if no overlap given, tracing net has zadd edges added on random, and zrem removed
+    ## if no overlap given, tracing net has zadd edges added on random, and zrem removed
     'zadd': 0, 'zrem': 5, # if overlap is set, bool(zadd) is still used to infer whether we want to add random edges or only remove
-    # similar as before but for dual == 2 and if no overlap_two given
+    ## similar as before but for dual == 2 and if no overlap_two given
     'zadd_two': 0, 'zrem_two': 5, # zadd_two fully replicates the functionality of zadd for the second dual net
-    # maximum percentage of nodes with at least 1 link (adoption rate)
+    ## maximum percentage of nodes with at least 1 link (adoption rate)
     'uptake': 1., 'uptake_two': 1.,
-    # if maintain_overlap True, then the generator will try to accommodate both the uptake and the overlap
+    ## if maintain_overlap True, then the generator will try to accommodate both the uptake and the overlap
     'maintain_overlap': False, 'maintain_overlap_two': True,
-    # update network after X days
+    ## update network after X days
     'update_after': -1,
 
-    ### Compartmental model parameters:
-    # can be sir, seir or covid
+    #### Compartmental model parameters:
+    ## can be sir, seir or covid
     'model': 'sir',
-    # number of nodes infected at the start of sim
+    ## number of nodes infected at the start of sim
     'first_inf': 1.,
-    # whether to have the Traced status separate from the infection states
+    ## whether to have the Traced status separate from the infection states
     # Note if this is disabled, much of the functionality surrounding noncompliance and self-isolation exit will not work
     'separate_traced': True,
-    # whether Susceptible people are isolated 
+    ## whether Susceptible people are isolated 
     # if True and 'traced', they can't get infected unless noncompliant
     'isolate_s': True,
-    # whether to mark hospitalized as traced
+    ## whether to mark hospitalized as traced
     'trace_h': False,
-    # if -1/None a node can become traced again only after exiting self-isolation
+    ## if -1/None a node can become traced again only after exiting self-isolation
     # not -1/None a node can become traced again after this amount of time (in days) has elapsed after becoming ilegally N
     'trace_after': 7,
 
-    ### Disease-specific parameters that are common for multiple models:
-    # transmission rate -> For Covid, 0.0791 correponding to R0=3.18
+    #### Disease-specific parameters that are common for multiple models:
+    ## transmission rate -> For Covid, 0.0791 correponding to R0=3.18
     'beta': 0.0791,
-    # latency -> For Covid 3.7 days
+    ## latency -> For Covid 3.7 days
     'eps': 1/3.7,
-    # global (spontaneus) recovey rate -> For Covid 2.3 days
+    ## global (spontaneus) recovey rate -> For Covid 2.3 days
     'gamma': 1/2.3,
-    # allow spontaneus recovery (for SIR and SEIR only, for Covid always true)
+    ## allow spontaneus recovery (for SIR and SEIR only, for Covid always true)
     'spontan': False,
-    # recovery rate for traced people (if 0, global gamma is used)
+    ## recovery rate for traced people (if 0, global gamma is used)
     'gammatau': 0,
 
-    ### COVID model specific parameters:
+    #### COVID model specific parameters:
     'pa': 0.2, # probability of being asymptomatic (could also be 0.5)
     'rel_beta': .5, # relative infectiousness of Ip/Ia compared to Is (Imperial paper + Medrxiv paper)
     'rel_taur': .8, # relative random tracing (testing) rate of Ia compared to Is 
@@ -78,77 +80,80 @@ PARAMETER_DEFAULTS = {
     'lamdahd': [0, .0031, .0155], # If hospitalized, daily rate entering in D based on age category
     'group': 1, # Age-group; Can be 0 - children, 1 - adults, 2 - senior
 
-    ### Tracing parameters:
-    # testing (random tracing) rate
+    #### Tracing parameters:
+    ## testing (random tracing) rate
     'taur': 0.1,
-    # contact-tracing rates for first & second tracing networks (if exists)
+    ## contact-tracing rates for first & second tracing networks (if exists)
     'taut': 0.1, 'taut_two': -1.,
-    # number of days of delay on second tracing network compared to first one
+    ## number of days of delay on second tracing network compared to first one
     # this is taken into account only if taut_two==-1/None
     'delay_two': 2.,
-    # noncompliance rate; Note this ONLY works for args.separate_traced=True
+    ## noncompliance rate; Note this ONLY works for args.separate_traced=True
     # each day the chance of going out of isolation increases by x%
     'noncomp': .01,
-    # whether the noncomp rate gets multiplied by time difference t_current - t_trace
+    ## whether the noncomp rate gets multiplied by time difference t_current - t_trace
     'noncomp_dependtime': True,
-    # period after which T becomes automatically N (nonisolating); Note this ONLY works for args.separate_traced=True
+    ## period after which T becomes automatically N (nonisolating); Note this ONLY works for args.separate_traced=True
     # -1/None means disabled; 14 is standard quarantine
     'noncomp_after': -1,
 
-    ### Simulation controlling parameters
-    # running number of nets, iterations per net and events for each
+    #### Simulation controlling parameters
+    ## running number of nets, iterations per net and events for each
     # nevents == 0, run until no more events
     'nnets': 1, 'niters': 1, 'nevents': -1,
-    # seed of simulation exponentials; the seed for network initializations; and the first infected seed
+    ## seed of simulation exponentials; the seed for network initializations; and the first infected seed
     # if -1, both seed and netseed default to None, whereas infseed is ignored (and netseed gets used for sampling the first infected)
     # except for infseed (and only in the case of a positive value), neither seed gets used directly, rather they get incremented by iterators
     'seed': -1, 'netseed': -1, 'infseed': -1,
-    # 0 - no multiprocess, 1 - multiprocess nets, 2 - multiprocess iters, 3 - multiprocess nets and iters (half-half cpus)
+    ## 0 - no multiprocess, 1 - multiprocess nets, 2 - multiprocess iters, 3 - multiprocess nets and iters (half-half cpus)
     'multip': 0,
+    ## sampling procedure for events; can be either of these:
     # dir: the exponential is sampled DIRECTLY from the function registered on the transition object
     # each: the transition obj registers only the lambda rates, the exponential is sampled FOR EACH lambda with exp_sampler.py
     # min: Gillespie's algorithm; the transition obj registers the lambda rates, ONLY the MINIMUM exponential is sampled based on sum
     'sampling_type': 'dir',
-    # number of stateless exponential presamples (if -1/None/0, no presampling)
+    ## number of stateless exponential presamples (if -1/None/0, no presampling)
     'presample': -1,
-    # whether or not to remove orphans from the infection network (they will not move state on the infection net)
+    ## whether or not to remove orphans from the infection network (they will not move state on the infection net)
     'rem_orphans': False,
-    # if rem_orphans, noising of links can be calculated either based on the full node list or the active nonorphan list through this param
+    ## if rem_orphans, noising of links can be calculated either based on the full node list or the active nonorphan list through this param
     'active_based_noising': False,
-    # wehther efforts are to be computed for each type of tracing (random+contact)
+    ## wehther efforts are to be computed for each type of tracing (random+contact)
     'efforts': False,
 
-    ### Summary-related parameters
-    # -1/None -> full_summary never called; 0 -> no summary printing, 1 -> print summary as well
+    #### Summary-related parameters
+    ## -1/None -> full_summary never called; 0 -> no summary printing, 1 -> print summary as well
     'summary_print': -1,
-    # how many time splits to use for the epidemic summary
+    ## how many time splits to use for the epidemic summary
     'summary_splits': 1000,
-    # number of days for Reff calculation
+    ## number of days for Reff calculation
     'r_window': 7,
-    # first_inf + earlystop_margin determines if a simulation is regarded as early stopped
+    ## first_inf + earlystop_margin determines if a simulation is regarded as early stopped
     'earlystop_margin': 0,
-    # whether alternative averages which have no early stopped iterations are to be computed
+    ## whether alternative averages which have no early stopped iterations are to be computed
     'avg_without_earlystop': False,
 
-    ### Drawing-related parameters:
-    # 0 - no draw, 1 - draw at start/finish, 2 - draw and save figure at finish
+    #### Drawing-related parameters:
+    ## 0 - no draw, 1 - draw at start/finish, 2 - draw and save figure at finish
     'draw': 0,
-    # if not 0, draw after each iteration and sleep for this long
+    ## if not 0, draw after each iteration and sleep for this long
     'draw_iter': 0.,
-    # animates the disease progression, no other info will be printed
+    ## animates the disease progression, no other info will be printed
     'animate': False,
-    # networkx drawing layout to use when drawing
+    ## networkx drawing layout to use when drawing
     'draw_layout': 'spring',
-    # whether the legend will contain the full state name or not
+    ## whether the legend will contain the full state name or not
     'draw_fullname': False,
 }
 
     
 def main(args):
     
-    ### This block of code is concerned with overwriting in a sensible manner args arguments, based on incomaptibilities and other criteria
+    ### First part of code is concerned with overwriting in a sensible manner args arguments, based on incomaptibilities and other criteria
     
-    # this is an easy hook point to supply own logic for loading custom datasets through special strings supplied
+    assert isinstance(args.nettype, Iterable), 'The nettype parameter needs to be an Iterable'
+    
+    # this is a hook point to supply own logic for loading custom datasets (invoked via special strings defined here)
     if isinstance(args.nettype, str):
         if args.nettype.startswith('socialevol'):
             # allow update_after (used to indicate when dynamic edge updates happen) to influence the aggregation 
@@ -178,6 +183,10 @@ def main(args):
             # note that the code also supports custom tracing networks (in this SocialEvol example, choose which_tr>=0 for this)
             args.nettype = loader.get_edge_data_for_time(which_inf=0, which_tr=None, time_to=time_to, 
                                                          time_fr=time_fr, use_week_index=use_week_index)
+    # an Iterable that is not a DICT may be supplied to nettype, in which case we adapt it to the convention DICT(STR -> LIST(nets))
+    elif not isinstance(args.nettype, dict):
+        args.nettype = {'0': (args.nettype,)}
+        
             
     # if animation of the infection progress is selected, disable all prints and enable both draw types
     if args.animate:

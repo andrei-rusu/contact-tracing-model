@@ -44,12 +44,8 @@ class EngineNet(Engine):
         net_events = defaultdict()
         # whether return of netstate is needed from this step (only in the case of predefined networks)
         netstate_return = False
-        
-        # initialize the true network seed to None
-        net_seed = None
-        # the net random seed will be corresponding to its index (if any netseed selected at all)
-        if args.netseed is not None:
-            net_seed = args.netseed + inet
+        # initialize the true network seed either randomly, or based on what has been supplied already + net index
+        net_seed = random.random() if args.netseed is None else args.netseed + inet
             
         args_dict = vars(args)
              

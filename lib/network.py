@@ -595,6 +595,7 @@ def get_from_predef(nx_or_edgelist, rem_orphans=False, count_importance=1, inet=
     G.count_importance = count_importance
     # Try to access fields based on nx API. If this fails, assume only a list of edges was supplied in nx_or_edgelist
     try:
+        print(nx_or_edgelist)
         ids = nx_or_edgelist.nodes
         edges = list(nx_or_edgelist.edges(data=True))
     except AttributeError:
