@@ -474,7 +474,7 @@ class Network(nx.Graph):
         return round(taur * randEffortAcum, 2), round(self.count_importance * tracingEffortAccum, 2)
     
         
-    def draw(self, pos=None, show=True, ax=None, layout_type='spring_layout', seed=43, legend=True, full_name=False, model='covid', degree_size=True):
+    def draw(self, pos=None, show=True, ax=None, layout_type='spring_layout', seed=43, legend=True, full_name=False, model='covid', node_size=300, degree_size=False):
         # get the node state list
         node_states = self.node_states
         # for the true network, colors for all nodes are based on their state
@@ -506,7 +506,6 @@ class Network(nx.Graph):
             # if both were None, generate a new layout with the seed and use it for drawing
             pos = self.generate_layout(layout_type=layout_type, seed=seed)
             
-        node_size = None    
         if degree_size:
             d = nx.degree(self)
             node_size = [(d[node]+1) * 100 for node in self.nodes]

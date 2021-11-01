@@ -338,7 +338,7 @@ def main(args):
             # get the current cpu count
             cpus = int(cpu_count())
             # we use normal Pool for distributing only the networks, but NoDaemonPool if we distribute both networks and iters
-            # in the first case we use the full cpu count, in the latter we use just a half to allow for iters to be distributed
+            # in the first case we use the full cpu count, in the latter we use a half to allow for iters to be distributed
             pool_type, jobs = (Pool, cpus) if args.multip == 1 else (ut.NoDaemonPool, cpus // 2)
             with pool_type(jobs) as pool:
                 for inet, (net_events, net_info) in enumerate(ut.tqdm_redirect(pool.imap(engine, net_range), total=nnets,

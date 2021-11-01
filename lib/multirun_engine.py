@@ -122,7 +122,7 @@ class EngineNet(Engine):
             # Object used during Multiprocessing of Network simulation events
             engine = EngineDual(
                 args=args, no_exposed=no_exposed, is_covid=is_covid,
-                true_net=true_net, know_net=know_net, tr_rate=tr_rate,
+                true_net=true_net, know_net=know_net,
                 trans_true=trans_true_items, trans_know=trans_know_items
             )
 
@@ -130,7 +130,7 @@ class EngineNet(Engine):
             # Object used during Multiprocessing of Network simulation events
             engine = EngineOne(
                 args=args, no_exposed=no_exposed, is_covid=is_covid,
-                true_net=true_net, tr_rate=tr_rate,
+                true_net=true_net,
                 trans_true=trans_true_items,
             )
 
@@ -188,7 +188,6 @@ class EngineDual(Engine):
         args = self.args
         args_dict = vars(args)
         dual = args.dual
-        tr_rate = self.tr_rate
         presample = args.presample
         separate_traced = args.separate_traced
         samp_already_exp = (args.sampling_type == 'dir')
@@ -542,17 +541,29 @@ class EngineOne(Engine):
         
         # local vars for efficiency
         args = self.args
+        args_dict = vars(args)
+        presample = args.presample
+        separate_traced = args.separate_traced
+        samp_already_exp = (args.sampling_type == 'dir')
+        samp_min_only = (args.sampling_type == 'min')
         noncomp_after = args.noncomp_after
         taur = args.taur
-        separate_traced = args.separate_traced
         true_net = self.true_net
-        trans = self.trans_true
+        # the transition object
+        trans_true = self.trans_true
+        
+        # seed the random for this network id and iteration
+        if args.seed is not None:
+            seeder = args.seed + true_net.inet + itr
+            random.seed(seeder)
+            np.random.seed(seeder)
         
         # drawing vars
         draw = args.draw
         draw_iter = args.draw_iter
         animate = args.animate
         
+        # If either of the drawing flag is enabled, instantiate drawing figure and axes, and draw initial state
         if draw or draw_iter:
             # import IPython here to avoid dependency if no drawing is performed
             from IPython import display
@@ -570,27 +581,20 @@ class EngineOne(Engine):
             
         # set the dual flag such that true_net can be interpreted as the tracing network
         true_net.is_dual = True
-            
-        # seed the random for this network id and iteration
-        if args.seed is not None:
-            seeder = args.seed + true_net.inet + itr
-            random.seed(seeder)
-            np.random.seed(seeder)
-        
         # in the case of separate_traced, mimic dual simulation objects as if dual net was run (sim_true + sim_know)
         if separate_traced:
             # infection simulator in this case should not be able to run 'T' events
             transition_items = defaultdict(list)
-            for state in trans:
-                for transition, func in trans[state]:
+            for state in trans_true:
+                for transition, func in trans_true[state]:
                     if transition != 'T':
                         transition_items[state].append((transition, func))
-            sim_true = true_net.get_simulator(transition_items)
+            sim_true = true_net.get_simulator(transition_items, already_exp=samp_already_exp, **args_dict)
             # the tracing simulator will calibrate on the first call to only accept 'T' events
-            sim_know = true_net.get_simulator(trans)
+            sim_know = true_net.get_simulator(trans_true, already_exp=samp_already_exp, **args_dict)
         else:
             # base simulation object with all transitions possible
-            sim_true = sim_know = true_net.get_simulator(trans)
+            sim_true = sim_know = true_net.get_simulator(trans_true, already_exp=samp_already_exp, **args_dict)
         
         # number of initial infected
         inf = args.first_inf
@@ -622,22 +626,30 @@ class EngineOne(Engine):
         # Infinite loop if args.nevents not specified (run until no event possible) OR run args.nevents otherwise
         events_range = range(args.nevents) if args.nevents else count()
         for i in events_range:
-
-            e1 = sim_true.get_next_event()
                         
             ### NOTE: Running sims with this option ON in a Single network is actually SLOWER than running on Dual nets directly
             if separate_traced:
-                # allow for separate tracing events to also be considered in the current events loop
-                e2 = sim_know.get_next_trace_event()
+                
+                # if samp_min_only then we only sample the minimum exponential Exp(sum(lamdas[i] for i in possible_transitions))
+                if samp_min_only:
+                    # we combine all possible lambdas from both infection and tracing
+                    # in this case we do not have dual networks, so all will be performed on top of the true net
+                    e = sim_true.get_next_event_sample_only_minimum(trans_true, [true_net])
+                    
+                    if e is None:
+                        break
+                
+                # otherwise, all exponentials are sampled as normal (either they are already exp or will be sampled later)
+                else:
+                    e1 = sim_true.get_next_event()
+                    # allow for separate tracing events to also be considered in the current events loop
+                    e2 = sim_know.get_next_trace_event()
 
-                # If no more events left, break out of the loop
-                if e1 is None and e2 is None:
-                    break
+                    # If no more events left, break out of the loop
+                    if e1 is None and e2 is None:
+                        break
 
-                e = e1 if (e2 is None or (e1 is not None and e1.time < e2.time)) else e2
-                                
-                # update the time for the 'fake' sim_know object
-                sim_know.time = e.time
+                    e = e1 if (e2 is None or (e1 is not None and e1.time < e2.time)) else e2
 
                 # if the event chosen is a tracing event, separate logic follows (NOT updating event.FROM counts!)
                 is_trace_event = (e.to == 'T')
@@ -665,6 +677,8 @@ class EngineOne(Engine):
                 # otherwise, normal logic follows if NOT e.to=T event (with update counts on infection network only)
                 elif not is_trace_event:
                     sim_true.run_event(e)
+                    # update the time for the 'fake' sim_know object (thus replacing the need for 'run_event')
+                    sim_know.time = e.time
 
                     # Update event.FROM counts:
                     #   - for models other than covid, leaving 'I' means a decrease in infectious count
@@ -677,11 +691,10 @@ class EngineOne(Engine):
                         m['nH'] -= 1
                     
             else:
+                e = sim_true.get_next_event()
                 # If no more events left, break out of the loop
-                if e1 is None:
+                if e is None:
                     break
-                
-                e = e1
 
                 sim_true.run_event(e)
 
@@ -734,12 +747,10 @@ class EngineOne(Engine):
                 node_traced = true_net.node_traced
                 node_states = true_net.node_states
                 traced_time = true_net.traced_time
-                blocked_states = ['H', 'D']
                 for nid in true_net.node_list:
-                    if node_traced[nid] and node_states[nid] not in blocked_states \
-                    and (current_time - traced_time[nid] >= noncomp_after):
+                    if node_traced[nid] and (current_time - traced_time[nid] >= noncomp_after):
                         event = sim_true.get_event_with_config(node=nid, fr='T', to='N', time=current_time)
-                        # we remove nid from traced_time to stop it from influencing the tracing chances of its neighbors after isolation exit
+                        # remove nid from traced_time to stop it from influencing the tracing chances of its neighbors after isolation exit
                         sim_true.run_trace_event_for_infect_net(event, to_traced=False, legal_isolation_exit=True)
                         sim_know.run_trace_event_for_trace_net(event, to_traced=False, legal_isolation_exit=True)
             
@@ -749,7 +760,7 @@ class EngineOne(Engine):
                 efforts_for_all = true_net.compute_efforts(taur)
                 # random (testing) effort is the first element (no dual networks here)
                 m['tracingEffortRandom'] = efforts_for_all[0]
-                # the contact tracing effort is the first second (no dual networks here)
+                # the contact tracing effort is the second (no dual networks here)
                 m['tracingEffortContact'] = [efforts_for_all[1]]
                 
             
@@ -840,7 +851,9 @@ class EngineOne(Engine):
                 
             if draw == 2:
                 plt.savefig('fig/network-viz/network-' + str(true_net.inet) + '.pdf', format='pdf', bbox_inches = 'tight')
-            
+         
+        if not animate:
+            plt.close()
         return result
 
 

@@ -266,9 +266,11 @@ class StatsProcessor():
             # Good moment for quickly debugging how well tracing fared overall
 #             print('Overall traced: ', current['average-overall-traced'])
             
-            # This is based on Tsimring and Huerta 2002
-            current['r-trace'] = contacts_scaler * args.beta / (infectious_time_rate + args.beta + args.taur *
-                                                                (1 + current['average-overall-true-traced']['mean'] / current['average-overall-infected']['mean']))
+            # calculating r-trace is only valid if a valid testing rate was used
+            if args.taur > 0:
+                # This is based on Tsimring and Huerta 2002
+                current['r-trace'] = contacts_scaler * args.beta / (infectious_time_rate + args.beta + args.taur *
+                                        (1 + current['average-overall-true-traced']['mean'] / current['average-overall-infected']['mean']))
             # growth rates based on r_window
             current['growth'] = stats_for_growth
             # for COVID models, we can also compute R_eff during the first period of the simulation from the growth recorded within the same period
