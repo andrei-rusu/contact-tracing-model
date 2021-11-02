@@ -329,10 +329,10 @@ def main(args):
                 # in non-COVID models we assume all 'I' states can be spotted via testing
                 add_trans(trans_know_items, 'I', 'T', tr_and_test_func)
         
-        # if the tracing events are not separate from the infection events, then allow for traced individuals to get Removed
-        if not args.separate_traced:
-            # Recovery for traced nodes is network independent at rate gammatau
-            add_trans(trans_know_items, 'T', 'R', ut.get_stateless_sampling_func(args.gammatau, exp))
+            # if the tracing events are not separate from the infection events, then allow for traced individuals to get Removed
+            if not args.separate_traced:
+                # Recovery for traced nodes is network independent at rate gammatau
+                add_trans(trans_know_items, 'T', 'R', ut.get_stateless_sampling_func(args.gammatau, exp))
         
         
         nnets = args.nnets
