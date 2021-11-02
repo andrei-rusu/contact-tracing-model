@@ -45,7 +45,7 @@ class EngineNet(Engine):
         # whether return of netstate is needed from this step (only in the case of predefined networks)
         netstate_return = False
         # initialize the true network seed either randomly, or based on what has been supplied already + net index
-        net_seed = random.random() if args.netseed is None else args.netseed + inet
+        net_seed = random.randint(0, 2e9) if args.netseed is None else args.netseed + inet
             
         args_dict = vars(args)
              

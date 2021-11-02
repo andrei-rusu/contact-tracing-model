@@ -595,7 +595,6 @@ def get_from_predef(nx_or_edgelist, rem_orphans=False, count_importance=1, inet=
     G.count_importance = count_importance
     # Try to access fields based on nx API. If this fails, assume only a list of edges was supplied in nx_or_edgelist
     try:
-        print(nx_or_edgelist)
         ids = nx_or_edgelist.nodes
         edges = list(nx_or_edgelist.edges(data=True))
     except AttributeError:
@@ -612,6 +611,11 @@ def get_from_predef(nx_or_edgelist, rem_orphans=False, count_importance=1, inet=
     G.add_mult(ids=ids, state='S', traced=False)
     # Set the active node list (this is before removing orphans)
     G.node_list = list(G)
+    # copy over already generated drawing layout, if one exists
+    try:
+        G.pos = nx_or_edgelist.pos
+    except AttributeError:
+        pass
     # normalization factor for edges
     G.norm_factor = K_factor / W_factor if W_factor else 0
     # checking if any there are any edges; agnostic for python iterables and np.arrays
