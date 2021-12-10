@@ -51,6 +51,8 @@ def r_from_growth(growth, method='exp', t=7, mean=6.6, shape=1.87, inv_scale=0.2
     """
     Get r from growth rate (NOT exponential growth) assuming Gamma distribution of generation time
     """
+    if not growth:
+        return 0
     if method == 'exp':
         if inv_scale is None:
             inv_scale = shape / mean

@@ -302,7 +302,10 @@ class EngineDual(Engine):
                         if e.fr == 'S': m['totalFalseTraced'] += 1
                         if e.fr == 'E': m['totalExposedTraced'] += 1
                     
-                    sim_true.run_trace_event_for_infect_net(e, True)
+                    # for e.to H events, an infection event that updated the infection network will be run
+                    # so for args.trace_h == True, we should not update the infection net twice
+                    if e.to != 'H':
+                        sim_true.run_trace_event_for_infect_net(e, True)
                     sim_know.run_trace_event_for_trace_net(e, True)
                     
                 # Non-compliance with isolation event
@@ -658,7 +661,10 @@ class EngineOne(Engine):
                         if e.fr == 'S': m['totalFalseTraced'] += 1
                         if e.fr == 'E': m['totalExposedTraced'] += 1
                     
-                    sim_true.run_trace_event_for_infect_net(e, True)
+                    # for e.to H events, an infection event that updated the infection network will be run
+                    # so for args.trace_h == True, we should not update the infection net twice
+                    if e.to != 'H':
+                        sim_true.run_trace_event_for_infect_net(e, True)
                     sim_know.run_trace_event_for_trace_net(e, True)
                     
                 # Non-compliance with isolation event
