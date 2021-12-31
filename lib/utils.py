@@ -23,21 +23,18 @@ from multiprocess.context import Process
 from multiprocess.pool import Pool
 
 
-saved_stdout = None
-
-
-# Disable print and remember stdout into saved_stdout
-def block_print():
-    if not isinstance(stdout, io.StringIO):
-        global saved_stdout
-        saved_stdout = stdout
+@contextmanager
+def no_std_context(enabled=False):
+    save_stdout = sys.stdout
+    save_stderr = sys.stderr
+    if enabled:
         sys.stdout = io.StringIO()
-
-        
-# Restore saved_stdout into stdout
-def enable_print():
-    if saved_stdout:
-        sys.stdout = saved_stdout
+        sys.stderr = io.StringIO()
+    try:
+        yield
+    finally:
+        sys.stdout = save_stdout
+        sys.stderr = save_stderr
 
         
 def is_not_empty(lst):

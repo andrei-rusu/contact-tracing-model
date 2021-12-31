@@ -190,12 +190,9 @@ def main(args):
             
     # if animation of the infection progress is selected, disable all prints and enable both draw types
     if args.animate:
-        ut.block_print()
         if not args.draw: args.draw = 1
         # if no draw_iter selected, set the sleep time between iters to 1
         if not args.draw_iter: args.draw_iter = 1
-    else:
-        ut.enable_print()
         
     # the following step ensures that unselected (-1) parameters are turned to None
     args_dict = vars(args)

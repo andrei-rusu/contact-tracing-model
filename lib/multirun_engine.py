@@ -10,7 +10,7 @@ from collections import defaultdict
 from multiprocess.pool import Pool
 
 from lib import network
-from lib.utils import tqdm_redirect, is_not_empty, ListDelegator
+from lib.utils import tqdm_redirect, is_not_empty, no_std_context, ListDelegator
 from lib.stats import StatsEvent
 
 
@@ -59,15 +59,16 @@ class EngineNet(Engine):
                 args.netsize = len(true_net.nodes)
                 args.k = true_net.avg_degree()
                 netstate_return = True
-            # if NO compute distribution was enabled, we can use args (since it is not deepcopied) to track all average weights
-            if not args.multip:
-                args.k_i = {
-                    '0': (args.k, true_net.avg_degree(use_weights=True))
-                }
         # TypeError: nettype is a str, KeyError: key '0' is not in the dynamic dict, IndexError: element 0 (inf net) not in list
         except (TypeError, KeyError, IndexError):
             # args_dict should also contain the netsize and the average degree
-            true_net = network.get_random(typ=nettype, nseed=net_seed, inet=inet, **args_dict)
+            true_net = network.get_random(typ=nettype, nseed=net_seed, inet=inet, weighted=args.use_weights, **args_dict)
+            
+        # if NO compute distribution was enabled, we can use args (since it is not deepcopied) to track all average weights
+        if not args.multip:
+            args.k_i = {
+                '0': (args.k, true_net.avg_degree(use_weights=True))
+            }
             
         # first_inf_nodes could have been calculated by this point if an infseed was supplied, and
         # we deal with random network OR 'nid' key was supplied in the predefined network of args.nettype
@@ -145,21 +146,22 @@ class EngineNet(Engine):
                     net_events[itr] = stats_events
         
         else:
-            for itr in tqdm_redirect(iters_range, desc='Iterations simulation progress'):
-                print('Running iteration ' + str(itr) + ':')
-                
-                # Reinitialize network + Random first infected at the beginning of each run BUT the first one
-                # This is needed only in sequential processing since in multiprocessing the nets are deepcopied anyway
-                if itr:
-                    engine.reinit_net(first_inf_nodes)
+            with no_std_context(enabled=args.animate):
+                for itr in tqdm_redirect(iters_range, desc='Iterations simulation progress'):
+                    print('Running iteration ' + str(itr) + ':')
 
-                # Run simulation
-                stats_events = engine(itr)
-                # Record sim results
-                net_events[itr] = stats_events
-                # A situation in which there is NO event can arise when all first infected nodes are orphans, and rem_orphans=True
-                total_inf = stats_events[-1]['totalInfected'] if stats_events else args.first_inf
-                print('---> Result:' + str(total_inf) + ' total infected persons over time.')
+                    # Reinitialize network + Random first infected at the beginning of each run BUT the first one
+                    # This is needed only in sequential processing since in multiprocessing the nets are deepcopied anyway
+                    if itr:
+                        engine.reinit_net(first_inf_nodes)
+
+                    # Run simulation
+                    stats_events = engine(itr)
+                    # Record sim results
+                    net_events[itr] = stats_events
+                    # A situation in which there is NO event can arise when all first infected nodes are orphans, and rem_orphans=True
+                    total_inf = stats_events[-1]['totalInfected'] if stats_events else args.first_inf
+                    print('---> Result:' + str(total_inf) + ' total infected persons over time.')
                 
         if return_last_net:
             return net_events, (true_net, know_net)
@@ -518,10 +520,7 @@ class EngineDual(Engine):
                 ax[1].set_title('Digital Tracing Network', fontsize=14)
                 ax[-1].set_title('Manual Tracing Network', fontsize=14)
             know_net.draw(pos=true_net.pos, show=False, ax=ax[1:], full_name=args.draw_fullname, model=args.model)
-            
             display.display(plt.gcf())
-            if animate:
-                display.clear_output(wait=True)
                 
             if draw == 2:
                 plt.savefig('fig/network-viz/network-' + str(true_net.inet) + '.pdf', format='pdf', bbox_inches = 'tight')
@@ -846,10 +845,7 @@ class EngineOne(Engine):
             ax[1].set_title('Tracing Progress', fontsize=14)
             true_net.is_dual = True
             true_net.draw(show=False, ax=ax[1], full_name=args.draw_fullname, model=args.model)
-            
             display.display(plt.gcf())
-            if animate:
-                display.clear_output(wait=True)
                 
             if draw == 2:
                 plt.savefig('fig/network-viz/network-' + str(true_net.inet) + '.pdf', format='pdf', bbox_inches = 'tight')
