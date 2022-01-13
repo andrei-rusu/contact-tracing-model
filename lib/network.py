@@ -223,8 +223,6 @@ class Network(nx.Graph):
     def init_for_simulation(self, first_inf_nodes):
         # this will initialize states to 'S' and tracing status to False
         self.init_states()
-        # default node_counts
-        self.node_counts = defaultdict(lambda: defaultdict(float))
         # initially, there should be no one traced so we only update the infection status counts
         self.change_state(first_inf_nodes, state='I', update=True, update_with_traced=False)
     
@@ -289,7 +287,8 @@ class Network(nx.Graph):
 
     def update_counts(self, nlist=None):
         # local for efficiency
-        counts = self.node_counts
+        # default node_counts to recount
+        counts = self.node_counts = defaultdict(lambda: defaultdict(float))
         states = self.node_states
         # if nlist not given, update_counts for all 'active' nodes and update W_all
         if nlist is None:
@@ -303,7 +302,8 @@ class Network(nx.Graph):
             
     def update_counts_with_traced(self, nlist=None):
         # local for efficiency
-        counts = self.node_counts
+        # default node_counts to recount
+        counts = self.node_counts = defaultdict(lambda: defaultdict(float))
         states = self.node_states
         # if nlist not given, update_counts for all 'active' nodes
         if nlist is None:
