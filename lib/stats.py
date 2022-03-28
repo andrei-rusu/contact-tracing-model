@@ -89,7 +89,8 @@ class StatsProcessor():
         
             max_time = float('-inf')
             for ser in series_to_sum:
-                max_time = max(max_time, ser[-1].time)
+                if ser:
+                    max_time = max(max_time, ser[-1].time)
                             
             # will hold all max and timeofmax for infected and hospitalized for calculating avg and std at the end
             i_max = []
@@ -109,8 +110,8 @@ class StatsProcessor():
             num_vars = 13
             # holds simulation result parameters over time
             accumulator = np.zeros((num_vars, splits, len_series))
-            # set the first infected number for time 0 (second-dim-id = 0); indices in first dim: active-inf, total-inf, total-infectious
-            accumulator[np.ix_([0, 1, 9], [0], range(len_series))] = first_inf
+            # set the first infected number as default for all time splits in all series; indices in first dim: active-inf, total-inf, total-infectious
+            accumulator[np.ix_([0, 1, 9], range(splits), range(len_series))] = first_inf
             # indexes of early stopped
             idx_early_stopped = []
             # array of arrays containing multiple Reff/growth_rates measurements sampled every r_window
@@ -118,34 +119,35 @@ class StatsProcessor():
             active_growth_series = []
                                 
             for ser_index, ser in enumerate(series_to_sum):
-                # if the overall infected remained smaller than the no. of initial infected + selected margin, account as earlystop
-                if ser[-1].totalInfected <= args.first_inf + args.earlystop_margin:
-                    idx_early_stopped.append(ser_index)
-                # counter var which will be used to index the current result in the series at a specific time slot
-                serI = 1
-                # iterate over "time splits"
-                for j in range(1, splits):
-                    # increment until the upper time limit of the j-th split - i.e. time_range_limits[j]
-                    # is exceeded by an event (and therefore the event will be part of block j + 1)
-                    while serI < len(ser) and time_range_limits[j] > ser[serI].time:
-                        serI += 1
-                    # get last index of the j'th split
-                    last_idx = ser[serI - 1]
-                    # number of infected in the current time frame is the total number of I (includes Ia and Is) and E
-                    accumulator[0][j][ser_index] = last_idx.nI + last_idx.nE
-                    accumulator[1][j][ser_index] = last_idx.totalInfected
-                    accumulator[2][j][ser_index] = last_idx.totalTraced
-                    accumulator[3][j][ser_index] = last_idx.totalRecovered
-                    if efforts:
-                        accumulator[4][j][ser_index] = last_idx.tracingEffortRandom
-                        accumulator[5][j][ser_index] = last_idx.tracingEffortContact[0]
-                    accumulator[6][j][ser_index] = last_idx.nH
-                    accumulator[7][j][ser_index] = last_idx.totalHospital
-                    accumulator[8][j][ser_index] = last_idx.totalDeath
-                    accumulator[9][j][ser_index] = last_idx.totalInfectious
-                    accumulator[10][j][ser_index] = last_idx.totalFalseTraced
-                    accumulator[11][j][ser_index] = last_idx.totalFalseNegative
-                    accumulator[12][j][ser_index] = last_idx.totalNonCompliant
+                if ser:
+                    # if the overall infected remained smaller than the no. of initial infected + selected margin, account as earlystop
+                    if ser[-1].totalInfected <= args.first_inf + args.earlystop_margin:
+                        idx_early_stopped.append(ser_index)
+                    # counter var which will be used to index the current result in the series at a specific time slot
+                    serI = 1
+                    # iterate over "time splits"
+                    for j in range(1, splits):
+                        # increment until the upper time limit of the j-th split - i.e. time_range_limits[j]
+                        # is exceeded by an event (and therefore the event will be part of block j + 1)
+                        while serI < len(ser) and time_range_limits[j] > ser[serI].time:
+                            serI += 1
+                        # get last index of the j'th split
+                        last_idx = ser[serI - 1]
+                        # number of infected in the current time frame is the total number of I (includes Ia and Is) and E
+                        accumulator[0][j][ser_index] = last_idx.nI + last_idx.nE
+                        accumulator[1][j][ser_index] = last_idx.totalInfected
+                        accumulator[2][j][ser_index] = last_idx.totalTraced
+                        accumulator[3][j][ser_index] = last_idx.totalRecovered
+                        if efforts:
+                            accumulator[4][j][ser_index] = last_idx.tracingEffortRandom
+                            accumulator[5][j][ser_index] = last_idx.tracingEffortContact[0]
+                        accumulator[6][j][ser_index] = last_idx.nH
+                        accumulator[7][j][ser_index] = last_idx.totalHospital
+                        accumulator[8][j][ser_index] = last_idx.totalDeath
+                        accumulator[9][j][ser_index] = last_idx.totalInfectious
+                        accumulator[10][j][ser_index] = last_idx.totalFalseTraced
+                        accumulator[11][j][ser_index] = last_idx.totalFalseNegative
+                        accumulator[12][j][ser_index] = last_idx.totalNonCompliant
 
                 
                 # Get Peak of Infection, Peak of Hospitalization, Time of peaks, and growth rate for r_window
@@ -229,6 +231,12 @@ class StatsProcessor():
             current['average-total-infected'] = stats_for_timed_parameters[1]
             current['average-overall-infected'] = stats_for_laststamp[1]
             
+            overall_infected_fractions = accumulator[1][-1] / args.netsize
+            # percentage of healthy nodes across simulations - healthy/netsize = 1 - overall_infected/netsize
+            current['average-%healthy'] = get_statistics(1 - overall_infected_fractions,
+                                                         compute='all', round_to=3,
+                                                         avg_without_idx=without_idx)[0]
+            
             current['average-total-traced'] = stats_for_timed_parameters[2]
             current['average-overall-traced'] = stats_for_laststamp[2]
             
@@ -255,7 +263,9 @@ class StatsProcessor():
             current['average-total-false-traced'] = stats_for_timed_parameters[10]
             current['average-overall-false-traced'] = stats_for_laststamp[10]
             # the total of correctly traced individuals is the difference between the overall traced and the falsely traced nodes
-            current['average-overall-true-traced'] = dict(Counter(current['average-overall-traced']) - Counter(current['average-overall-false-traced']))
+            overall_true_trace = Counter(current['average-overall-traced'])
+            overall_true_trace.subtract(current['average-overall-false-traced'])
+            current['average-overall-true-traced'] = dict(overall_true_trace)
             
             current['average-total-false-negative'] = stats_for_timed_parameters[11]
             current['average-overall-false-negative'] = stats_for_laststamp[11]
@@ -263,8 +273,8 @@ class StatsProcessor():
             current['average-total-noncompliant'] = stats_for_timed_parameters[12]
             current['average-overall-noncompliant'] = stats_for_laststamp[12]
             
-            # Good moment for quickly debugging how well tracing fared overall
-#             print('Overall traced: ', current['average-overall-traced'])
+            # # Good moment for quickly debugging how well tracing fared overall
+            # print('Overall traced: ', current['average-overall-traced'])
             
             # calculating r-trace is only valid if a valid testing rate was used
             if args.taur > 0:

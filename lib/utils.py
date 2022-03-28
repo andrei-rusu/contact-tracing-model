@@ -59,8 +59,10 @@ def r_from_growth(growth, method='exp', t=7, mean=6.6, shape=1.87, inv_scale=0.2
 
     
 def pad_2d_list_variable_len(a, pad=0):
-    max_len = len(max(a, key=len))
-    return [i + [pad] * (max_len - len(i)) for i in a]
+    if a and isinstance(a[0], list):
+        max_len = len(max(a, key=len))
+        return [i + [pad] * (max_len - len(i)) for i in a]
+    return a
 
 
 def get_z_for_overlap(k=10, overlap=.08, include_add=0):
