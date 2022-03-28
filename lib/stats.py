@@ -87,7 +87,7 @@ class StatsProcessor():
             # the number of events for avg and var calculation
             len_series = len(series_to_sum)
         
-            max_time = float('-inf')
+            max_time = 0
             for ser in series_to_sum:
                 if ser:
                     max_time = max(max_time, ser[-1].time)
