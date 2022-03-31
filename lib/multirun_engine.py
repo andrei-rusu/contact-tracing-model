@@ -485,6 +485,8 @@ class EngineDual(Engine):
                             true_net.node_list.extend(node_list)
                             # update counts with/without traced
                             true_net.update_counts_with_traced() if separate_traced else true_net.update_counts()
+                            # mark no node as last updated, since rates need to be updated for all nodes
+                            sim_true.last_updated = []
                             # keep track of new average degrees IF no distribution was enabled (making args SHARED)
                             if not args.multip:
                                 args.k_i[str(update_iter)] = (true_net.avg_degree(), true_net.avg_degree(use_weights=True))
@@ -828,6 +830,8 @@ class EngineOne(Engine):
                             true_net.node_list.extend(node_list)
                             # update counts with/without traced
                             true_net.update_counts_with_traced() if separate_traced else true_net.update_counts()
+                            # mark no node as last updated, since rates need to be updated for all nodes
+                            sim_true.last_updated = []
                             # keep track of new average degrees
                             args.k_i[str(update_iter)] = (true_net.avg_degree(), true_net.avg_degree(use_weights=True))
                 

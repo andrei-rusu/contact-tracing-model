@@ -364,7 +364,7 @@ class Network(nx.Graph):
          based on to_traced True/False
         """
         # a change happens only when its a valid change of traced state
-        # switch traced flag for the current node
+        # switch traced flag for the current node; important: this list will be shared among inf and tracing networks
         self.node_traced[nid] = to_traced
 
         # If this is a traced event, count_val = 1 | edge_weight, update time of tracing
@@ -397,8 +397,6 @@ class Network(nx.Graph):
         Whichever of the above, depends directly on to_traced True/False
         - this is meant to be run only on the infection network AND only if the infection status of nid is Infectious
         """
-        # switch traced flag for the current node
-        self.node_traced[nid] = to_traced
         inf_state = self.node_states[nid]
         if inf_state in ['I', 'Ia', 'Is']:
             # If this is a traced event, count_val = 1 | edge_weight, update time of tracing
