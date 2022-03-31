@@ -67,7 +67,7 @@ class EngineNet(Engine):
         # if NO compute distribution was enabled, we can use args (since it is not deepcopied) to track all average weights
         if not args.multip:
             args.k_i = {
-                '0': (args.k, true_net.avg_degree(use_weights=True))
+                '0': (true_net.avg_degree(), true_net.avg_degree(use_weights=True))
             }
             
         # first_inf_nodes could have been calculated by this point if an infseed was supplied, and
@@ -483,8 +483,8 @@ class EngineDual(Engine):
                             # update active node_list without losing the pointer; this will allow tracing nets to see updates
                             true_net.node_list.clear()
                             true_net.node_list.extend(node_list)
-                            # update counts without traced
-                            true_net.update_counts()
+                            # update counts with/without traced
+                            true_net.update_counts_with_traced() if separate_traced else true_net.update_counts()
                             # keep track of new average degrees IF no distribution was enabled (making args SHARED)
                             if not args.multip:
                                 args.k_i[str(update_iter)] = (true_net.avg_degree(), true_net.avg_degree(use_weights=True))
@@ -826,8 +826,8 @@ class EngineOne(Engine):
                             # update active node_list without losing the pointer
                             true_net.node_list.clear()
                             true_net.node_list.extend(node_list)
-                            # update counts without traced
-                            true_net.update_counts()
+                            # update counts with/without traced
+                            true_net.update_counts_with_traced() if separate_traced else true_net.update_counts()
                             # keep track of new average degrees
                             args.k_i[str(update_iter)] = (true_net.avg_degree(), true_net.avg_degree(use_weights=True))
                 
