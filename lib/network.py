@@ -345,7 +345,7 @@ class Network(nx.Graph):
         if state != 'E' and not (self.node_traced[nid] or old_state == 'H'):
             for _, neigh, data in self.edges(nid, data=True):
                 # update counts only for Suscpetibles or if the state transitions correspond to a tracing event
-                if states[neigh] == 'S' or state == 'T' or state=='N':
+                if states[neigh] == 'S' or state == 'T' or state == 'N':
                     # get the counts dict of the neighbor
                     neigh_counts = counts[neigh]
                     # count_val becomes the normalized weight of this edge if self.use_weight

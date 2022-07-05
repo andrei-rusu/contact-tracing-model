@@ -295,20 +295,6 @@ class EngineDual(Engine):
                 
                 # if the event chosen is a tracing event, separate logic follows (NOT updating event.FROM counts!)
                 is_trace_event = (e.to == 'T')
-                # exception: if trace_h selected, the node will be counted as traced if going to H (can never become noncompliant)
-                if is_trace_event or (args.trace_h and e.to == 'H'):
-                    # the update to total traced counts is done only once (ignore if same nid is traced again)
-                    if e.node not in true_net.traced_time:
-                        m['totalTraced'] += 1
-                        # if S -> T then a person has been incorrectly traced
-                        if e.fr == 'S': m['totalFalseTraced'] += 1
-                        if e.fr == 'E': m['totalExposedTraced'] += 1
-                    
-                    # for e.to H events, an infection event that updated the infection network will be run
-                    # so for args.trace_h == True, we should not update the infection net twice
-                    if e.to != 'H':
-                        sim_true.run_trace_event_for_infect_net(e, True)
-                    sim_know.run_trace_event_for_trace_net(e, True)
                     
                 # Non-compliance with isolation event
                 if e.to == 'N':
@@ -332,6 +318,21 @@ class EngineDual(Engine):
                         m['nE'] -= 1
                     elif e.fr == 'H':
                         m['nH'] -= 1
+                        
+                # if trace event or trace_h selected and hospital event, the node will be counted as traced (if going to H, it will never become noncompliant)
+                if is_trace_event or (args.trace_h and e.to == 'H'):
+                    # the update to total traced counts is done only once (ignore if same nid is traced again)
+                    if e.node not in true_net.traced_time:
+                        m['totalTraced'] += 1
+                        # if S -> T then a person has been incorrectly traced
+                        if e.fr == 'S': m['totalFalseTraced'] += 1
+                        if e.fr == 'E': m['totalExposedTraced'] += 1
+
+                    # for e.to H events, an infection event that updated the infection network will be run
+                    # so for args.trace_h == True, we should not update the infection net twice
+                    if e.to != 'H':
+                        sim_true.run_trace_event_for_infect_net(e, True)
+                    sim_know.run_trace_event_for_trace_net(e, True)
             
             else:
                 e1 = sim_true.get_next_event()
@@ -653,20 +654,6 @@ class EngineOne(Engine):
 
                 # if the event chosen is a tracing event, separate logic follows (NOT updating event.FROM counts!)
                 is_trace_event = (e.to == 'T')
-                # exception: if trace_h selected, the node will be counted as traced if going to H (but will never become noncompliant)
-                if is_trace_event or (args.trace_h and e.to == 'H'):
-                    # the update to total traced counts is done only once (ignore if same nid is traced again)
-                    if e.node not in true_net.traced_time:
-                        m['totalTraced'] += 1
-                        # if S -> T then a person has been incorrectly traced
-                        if e.fr == 'S': m['totalFalseTraced'] += 1
-                        if e.fr == 'E': m['totalExposedTraced'] += 1
-                    
-                    # for e.to H events, an infection event that updated the infection network will be run
-                    # so for args.trace_h == True, we should not update the infection net twice
-                    if e.to != 'H':
-                        sim_true.run_trace_event_for_infect_net(e, True)
-                    sim_know.run_trace_event_for_trace_net(e, True)
                     
                 # Non-compliance with isolation event
                 if e.to == 'N':
@@ -692,6 +679,21 @@ class EngineOne(Engine):
                         m['nE'] -= 1
                     elif e.fr == 'H':
                         m['nH'] -= 1
+                        
+                # if trace event or trace_h selected and hospital event, the node will be counted as traced (if going to H, it will never become noncompliant)
+                if is_trace_event or (args.trace_h and e.to == 'H'):
+                    # the update to total traced counts is done only once (ignore if same nid is traced again)
+                    if e.node not in true_net.traced_time:
+                        m['totalTraced'] += 1
+                        # if S -> T then a person has been incorrectly traced
+                        if e.fr == 'S': m['totalFalseTraced'] += 1
+                        if e.fr == 'E': m['totalExposedTraced'] += 1
+
+                    # for e.to H events, an infection event that updated the infection network will be run
+                    # so for args.trace_h == True, we should not update the infection net twice
+                    if e.to != 'H':
+                        sim_true.run_trace_event_for_infect_net(e, True)
+                    sim_know.run_trace_event_for_trace_net(e, True)
                     
             else:
                 e = sim_true.get_next_event()
