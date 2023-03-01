@@ -72,10 +72,10 @@ def covid(trans_true, args, exp):
     add_trans(trans_true, 'Ia', 'R', get_stateless_sampling_func(args.gamma, exp))
     
     # Symptomatics can transition to either recovered or hospitalized based on duration gamma and probability ph (Age-group dependent!)
-    hosp_rec = args.gamma * args.ph
-    hosp_ded = args.gamma * (1 - args.ph)
-    add_trans(trans_true, 'Is', 'R', get_stateless_sampling_func(hosp_rec, exp))
-    add_trans(trans_true, 'Is', 'H', get_stateless_sampling_func(hosp_ded, exp))
+    symp_hosp = args.gamma * args.ph
+    symp_rec = args.gamma * (1 - args.ph)
+    add_trans(trans_true, 'Is', 'H', get_stateless_sampling_func(symp_hosp, exp))
+    add_trans(trans_true, 'Is', 'R', get_stateless_sampling_func(symp_rec, exp))
     
     # Transitions from hospitalized to R or D are based on measurements in Ile-de-France (Age-group dependent!)
     add_trans(trans_true, 'H', 'R', get_stateless_sampling_func(args.lamdahr, exp))
