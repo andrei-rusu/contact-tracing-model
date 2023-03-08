@@ -4,10 +4,10 @@
 # set default resource requirements for job 
 # - these can be overridden on the qsub command line
 #
-#SBATCH --job-name="Epidemic Grid Simulation"
-#SBATCH --ntasks-per-node=4     # Tasks per node
+#SBATCH --job-name="Epidemic Grid Simulation - Age-groups"
+#SBATCH --ntasks-per-node=15     # Tasks per node
 #SBATCH --nodes=1                # Number of nodes requested
-#SBATCH --time=00:10:00          # walltime
+#SBATCH --time=00:45:00          # walltime
 #SBATCH -o data/run/job_output/slurm/slurm-%A_%a.out        # STDOUT
 #SBATCH -e data/run/job_output/slurm/slurm-%A_%a.err        # STDERR
 
@@ -32,7 +32,8 @@ taut=${gridentry[1]}
 taur=${gridentry[2]}
 pa=${gridentry[3]}
 overlap=${gridentry[4]}
-dual=${gridentry[5]}
+group=${gridentry[5]}
+dual=${gridentry[6]}
 
 # circumvent normal logic for taut if a value of 10 has been supplied -> check for 4 different values for taut
 if [ $taut -eq 10 ]
@@ -42,30 +43,31 @@ fi
 
 k=10
 
-newfile="data/run/batch8_slurm/simresult_id"$SLURM_ARRAY_TASK_ID"_"$taut"_"$taur"_"$uptake"_"$k".json"
+newfile="data/run/batch10/simresult_id"$SLURM_ARRAY_TASK_ID"_"$taut"_"$taur"_"$uptake"_"$group".json"
 
 # Needed such that matplotlib does not produce error because XDG_RUNTIME_DIR not set
 export MPLBACKEND=Agg
 
 python run.py \
-    --netsize 100 \
+    --netsize 10000 \
     --k $k \
     --p .2 \
-    --nettype "powerlaw-cluster" \
+    --nettype "barabasi" \
     --multip 3 \
     --model "covid" \
     --dual $dual \
     --uptake $uptake \
-    --overlap 1 \
-    --maintain_overlap False \
-    --overlap_two $overlap \
-    --nnets 2 \
-    --niters 2 \
+    --overlap $overlap \
+    --maintain_overlap True \
+    --overlap_two 1. \
+    --nnets 7 \
+    --niters 15 \
     --separate_traced True \
     --avg_without_earlystop True \
     --trace_after 1 \
     --first_inf .1 \
-    --earlystop_margin 0 \
+    --group $group \
+    --earlystop_margin 5 \
     --rem_orphans True \
     --noncomp .001 \
     --noncomp_after 14 \
