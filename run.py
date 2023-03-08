@@ -79,6 +79,7 @@ PARAMETER_DEFAULTS = {
     'lamdahr': [0, .083, .033], # If hospitalized, daily rate entering in R based on age category
     'lamdahd': [0, .0031, .0155], # If hospitalized, daily rate entering in D based on age category
     'group': 1, # Age-group; Can be 0 - children, 1 - adults, 2 - senior
+    'group_percent': [.173, .641, .186], # Age-group percentages (to be used when group is -1/None)
 
     #### Tracing parameters:
     ## testing (random tracing) rate
@@ -247,9 +248,9 @@ def main(args):
     if not args.gammatau: args.gammatau = args.gamma
     
     # if age-group dependent vars have been provided as array, then choose the value based on inputted age-group 
-    if not np.isscalar(args.ph): args.ph = args.ph[args.group]
-    if not np.isscalar(args.lamdahr): args.lamdahr = args.lamdahr[args.group]
-    if not np.isscalar(args.lamdahd): args.lamdahd = args.lamdahd[args.group]
+    if not np.isscalar(args.ph): args.ph = (args.ph[args.group] if args.group is not None else np.average(args.ph, weights=args.group_percent))
+    if not np.isscalar(args.lamdahr): args.lamdahr = (args.lamdahr[args.group] if args.group is not None else np.average(args.lamdahr, weights=args.group_percent))
+    if not np.isscalar(args.lamdahd): args.lamdahd = (args.lamdahd[args.group] if args.group is not None else np.average(args.lamdahd, weights=args.group_percent))
     
     # Finally, create the object which will hold stats for all simulations
     # Parametrized by args -> will output the parameter configuration used to obtain these results
