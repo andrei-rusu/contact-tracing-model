@@ -20,7 +20,7 @@ Link to original study: <a href="https://journals.plos.org/plosone/article?id=10
 <h2>Running example:</h2>
 
 ```
-python run.py \
+python ct_simulator/run_tracing.py \
     --netsize 1000 \
     --k 10 \
     --p .2 \
@@ -51,29 +51,30 @@ python run.py \
 
 The API supports Python calls from Jupyter Notebooks, using the same arguments:
 ```python
-import run
+from ct_simulator import run_tracing
 kwargs = {
     'netsize':30, 'nettype':'barabasi', 'k':5, 'model':'covid', 'dual':2, 
     'uptake':.5, 'overlap':.7, 'taut':.1, 'taur':.1, 'animate':0.5,
 }
-run.run_mock(**kwargs)
+run_tracing.run_api(**kwargs)
 ```
 
 Additionally, the user can supply predefined networks via the <i>nettype</i> parameter:
 ```python
-import run
+from ct_simulator import run_tracing
 import networkx as nx
 G = nx.fast_gnp_random_graph(30, p=.2, seed=5)
 kwargs = {
     'nettype': G, 'model':'covid', 'dual':2, 
     'uptake':.5, 'overlap':.7, 'taut':.1, 'taur':.1, 'animate':0.5,
 }
-run.run_mock(**kwargs)
+run_tracing.run_api(**kwargs)
 ```
 
 It is also possible to study the disease progression over dynamic networks. In order to do so, <i>nettype</i> should be a dictionary mapping timestamps to tuples of edge sets, one for each network type (i.e. infection, digital tracing, manual tracing). Note that random subnetworks of the true contacts graph can also be generated (according to the <i>uptake</i> and <i>overlap</i> parameters), if the user only predefines the infection network.
 
 ```python
+from ct_simulator import run_tracing
 nettype = {
     'nid': range(10),
     '0': (
@@ -92,7 +93,7 @@ kwargs = {
     'nettype':nettype, 'model':'covid', 'dual':2, 'first_inf': 4, 
     'update_after':1, 'taut':.1, 'taur':.1, 'animate':0.5,
 }
-run.run_mock(**kwargs)
+run_tracing.run_api(**kwargs)
 ```
 <br />
 <h2>Parameter descriptions:</h2>
