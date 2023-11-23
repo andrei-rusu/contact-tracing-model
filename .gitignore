@@ -1,9 +1,11 @@
 tracing_runs/
-fig/
 temp/
 data/
 notebooks/
 scripts/
+fig/*
+!fig/ct.gif
+!fig/nct.gif
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
