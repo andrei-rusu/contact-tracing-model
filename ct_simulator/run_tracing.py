@@ -21,7 +21,7 @@ from .tracing.data_utils import DataLoader
 PARAMETER_DEFAULTS = {
     #### Network related parameters:
     ## network wiring type; this can be one of the following: 
-    # - a STR with the name of a random graph model (e.g. random, barabasi, ws, powerlaw-cluster) OR a predefined dataset (SocialEvol)
+    # - a STR with the name of a random graph model (e.g. random, barabasi, ws, powerlaw-cluster) OR a predefined dataset name (SocialEvol)
     # - an Iterable of edges (including nx.Graph objects)
     # - a DICT mapping integer timestamps (0,1,...) to LISTS of predefined networks - infection, tracing #1, tracing #2
     # for DICT the 'update_after' param dictates when each integer key becomes 'active', thus changing the network wiring (dynamic)
@@ -158,7 +158,7 @@ PARAMETER_DEFAULTS = {
     #### Summary/logging-related parameters
     ## controls how the program returns and what it prints at the end of the simulations
     # -1/None -> always return None, summary never called; 0 -> return summary, no printing; 
-    # 1 -> return None, print json summary to stdout; 2 -> return None, print to file
+    # 1 -> return None, print json summary to stdout; 2 -> return None, print to file; >2 -> return None, print to file with `seed` in name
     'summary_print': -1.,
     ## how many time splits to use for the epidemic summary (if 0, no summary is computed)
     'summary_splits': 30,
@@ -171,6 +171,7 @@ PARAMETER_DEFAULTS = {
     ## whether alternative averages which have no early stopped iterations are to be computed
     'avg_without_earlystop': False,
     ## an id for the experiment to be used by the logging folder structure
+    # if ends with '/', the date will be appended to the end of the path
     'exp_id': 'default_id',
 
     #### Drawing- and printing-related parameters:
@@ -227,10 +228,14 @@ def main(args=None):
     if args is None:
         args = parse_args()
 
+    time = datetime.now().strftime('%Y-%m-%d--%H-%M/')
     # get env variables and set date information + logging location for the run
     args.cpus = int(os.environ.get('SLURM_CPUS_PER_TASK', cpu_count()))
-    time = datetime.now().strftime('%Y-%m-%d--%H-%M/')
-    args.save_path = f'{RECORD_PATH}{args.exp_id}/{time}'
+    # construct the save path for the experiment
+    args.save_path = f'{RECORD_PATH}{args.exp_id}'
+    # if `exp_id` does not end with '/', this signals that the user wants to use a nested folder structure, with the date as the last folder 
+    if not args.exp_id.endswith('/'):
+        args.save_path += f'/{time}'
     args.draw_config['output_path'] = f"{args.save_path}/{args.draw_config['output_path']}"
     if not args.animate:
         print(f'\nExperiment date: {time}')
@@ -318,7 +323,7 @@ def main(args=None):
 
     # the following block is for random graphs, which are not dynamic and for which we can use `args.netsize` to sample the first infected
     # OR for predefined networks that have the `nid` supplied as part of `nettype`
-    # Note that an `infseed` also needs to be supplied; if not, the first infected will be sampled at network creation time
+    # note that an `infseed` also needs to be supplied; if not, the first infected will be sampled at network creation time
     # being sampled at net creation time, the first infected become dependent on the `args.netseed` + `network_index`
     # and therefore they can be DIFFERENT for each network (useful for averaging purposes)
     if is_nids_known:
@@ -487,7 +492,6 @@ def main(args=None):
         # Multiprocessing object to use for each network initialization
         engine = EngineNet(args=args, first_inf_nodes=first_inf_nodes, no_exposed=no_exposed, is_covid=is_covid,
                            tr_rate=taut, trans_true=trans_true_items, trans_know=trans_know_items)
-
         
         extra_return = [args.shared]
         # for args.multip == 1 or 3, distribution over networks will be performed (either exclusively or inclusively)
@@ -563,7 +567,7 @@ def parse_args():
             # The following is needed since weirdly bool('False') = True in Python
             typed = type(default) if not isinstance(default, bool) else lambda arg: arg.lower() in ('yes', 'true', 't', '1')
             argparser.add_argument('--' + k, type=typed, default=default)
-    args = argparser.parse_args()
+    args, _ = argparser.parse_known_args()
 
     return args
 

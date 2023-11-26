@@ -20,7 +20,7 @@ Link to original study: <a href="https://journals.plos.org/plosone/article?id=10
 <h2>Running example:</h2>
 
 ```
-python ct_simulator/run_tracing.py \
+python -m ct_simulator/run_tracing.py \
     --netsize 1000 \
     --k 10 \
     --p .2 \
@@ -45,6 +45,7 @@ python ct_simulator/run_tracing.py \
     --taut .1 \
     --taur .1 \
     --sampling_type "min" \
+    --summary_print 1 \
     --netseed 31 \
     --seed 11 > file.out
 ```
@@ -54,7 +55,7 @@ The API supports Python calls from Jupyter Notebooks, using the same arguments:
 from ct_simulator import run_tracing
 kwargs = {
     'netsize':30, 'nettype':'barabasi', 'k':5, 'model':'covid', 'dual':2, 
-    'uptake':.5, 'overlap':.7, 'taut':.1, 'taur':.1, 'animate':0.5,
+    'uptake':.5, 'overlap':.7, 'taut':.1, 'taur':.1, 'animate':0,
 }
 run_tracing.run_api(**kwargs)
 ```
@@ -66,7 +67,7 @@ import networkx as nx
 G = nx.fast_gnp_random_graph(30, p=.2, seed=5)
 kwargs = {
     'nettype': G, 'model':'covid', 'dual':2, 
-    'uptake':.5, 'overlap':.7, 'taut':.1, 'taur':.1, 'animate':0.5,
+    'uptake':.5, 'overlap':.7, 'taut':.1, 'taur':.1, 'animate':0,
 }
 run_tracing.run_api(**kwargs)
 ```
@@ -91,7 +92,7 @@ nettype = {
 }
 kwargs = {
     'nettype':nettype, 'model':'covid', 'dual':2, 'first_inf': 4, 
-    'update_after':1, 'taut':.1, 'taur':.1, 'animate':0.5,
+    'update_after':1, 'taut':.1, 'taur':.1, 'animate':0,
 }
 run_tracing.run_api(**kwargs)
 ```
@@ -101,7 +102,7 @@ run_tracing.run_api(**kwargs)
 ```python
 #### Network related parameters:
 ## network wiring type; this can be one of the following: 
-# - a STR with the name of a random graph model (e.g. random, barabasi, ws, powerlaw-cluster) OR a predefined dataset (SocialEvol)
+# - a STR with the name of a random graph model (e.g. random, barabasi, ws, powerlaw-cluster) OR a predefined dataset name (SocialEvol)
 # - an Iterable of edges (including nx.Graph objects)
 # - a DICT mapping integer timestamps (0,1,...) to LISTS of predefined networks - infection, tracing #1, tracing #2
 # for DICT the 'update_after' param dictates when each integer key becomes 'active', thus changing the network wiring (dynamic)
@@ -238,7 +239,7 @@ run_tracing.run_api(**kwargs)
 #### Summary/logging-related parameters
 ## controls how the program returns and what it prints at the end of the simulations
 # -1/None -> always return None, summary never called; 0 -> return summary, no printing; 
-# 1 -> return None, print json summary to stdout; 2 -> return None, print to file
+# 1 -> return None, print json summary to stdout; 2 -> return None, print to file; >2 -> return None, print to file with `seed` in name
 'summary_print': -1.,
 ## how many time splits to use for the epidemic summary (if 0, no summary is computed)
 'summary_splits': 30,
@@ -251,6 +252,7 @@ run_tracing.run_api(**kwargs)
 ## whether alternative averages which have no early stopped iterations are to be computed
 'avg_without_earlystop': False,
 ## an id for the experiment to be used by the logging folder structure
+# if ends with '/', the date will be appended to the end of the path
 'exp_id': 'default_id',
 
 #### Drawing- and printing-related parameters:
@@ -285,5 +287,5 @@ run_tracing.run_api(**kwargs)
 ## vax immunity delay
 'control_immunity_delay': 21,
 ## whether control uses GPUs
-'control_gpu': False
+'control_gpu': False,
 ```

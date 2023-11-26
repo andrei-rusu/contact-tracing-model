@@ -1,0 +1,56 @@
+#!/bin/bash
+# Job script to run pbs job
+#=============================================
+# set default resource requirements for job 
+# - these can be overridden on the qsub command line
+#
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=00:30:00
+#PBS -t 1
+#PBS -e tracing_runs/job_output/pbs/error
+#PBS -o tracing_runs/job_output/pbs/output
+
+# Load the conda module and activate the environment if in PBS environment
+if [ -n "$PBS_JOBID" ]; then
+    echo "Running in PBS with job ID: $PBS_JOBID"
+    module load conda
+    source activate contact
+else
+    echo "Running locally, default PBS job ID to 0"
+    PBS_JOBID=0
+    PBS_O_WORKDIR=.
+fi
+#Change to directory from which job was submitted
+cd $PBS_O_WORKDIR
+
+# Set an ID for the run, if this wasn't run from a PBS array job
+if [ -z "$PBS_ARRAYID" ]; then
+    PBS_ARRAYID=0
+fi
+# set the job and task ID to the array ID
+JOB_ID=$PBS_JOBID
+TASK_ID=$PBS_ARRAYID
+
+netsize=200
+
+# Needed such that matplotlib does not produce error because XDG_RUNTIME_DIR not set
+export MPLBACKEND=Agg
+
+# Run the simulator
+python -m ct_simulator.run_tracing \
+    --exp-id "pbs_"$netsize"" \
+    --netsize $netsize \
+    --k 10 \
+    --multip 0 \
+    --model "covid" \
+    --dual 1 \
+    --overlap .8 \
+    --nnets 1 \
+    --niters 1 \
+    --separate_traced False \
+    --taut .1 \
+    --taur .005 \
+    --seed $TASK_ID \
+    --netseed 11 \
+    --animate 0 \
+    --summary_print 3

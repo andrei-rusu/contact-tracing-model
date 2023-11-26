@@ -396,8 +396,9 @@ class StatsProcessor():
             else:
                 if not os.path.exists(args.save_path):
                     os.makedirs(args.save_path)
+                filename = 'result.json' if printit < 3 else f'result_{args.seed}.json'
                 # Output to a JSON file
-                with open(args.save_path+'result.json', 'w') as f:
+                with open(args.save_path+filename, 'w') as f:
                     json.dump(summary, f, indent=1, cls=ut.NumpyEncoder)
 
         return summary

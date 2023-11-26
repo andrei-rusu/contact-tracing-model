@@ -1,8 +1,7 @@
 tracing_runs/
-temp/
 data/
+temp/
 notebooks/
-scripts/
 fig/*
 !fig/ct.gif
 !fig/nct.gif
