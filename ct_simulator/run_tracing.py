@@ -391,9 +391,9 @@ def main(args=None):
         # init learning model if supplied and needed (this ensures Model tensors are shared across all Agent instances)
         ranking_model = args.ranker if args.ranker else args.agent.get('ranking_model', None)
         if args.is_learning_agent and isinstance(ranking_model, dict):
-            from .tracing.agent_factory import create_model
+            from .tracing.agent_factory import create_model, AGENT_SOURCE_DEFAULT
             if 'source' not in ranking_model:
-                ranking_model['source'] = args.agent.get('source', 'control_diffusion')
+                ranking_model['source'] = args.agent.get('source', AGENT_SOURCE_DEFAULT)
             args.agent['ranking_model'] = create_model(k_hops=args.agent.get('k_hops', 2), 
                                                        static_measures=args.agent.get('static_measures', ('degree',)), 
                                                        **ranking_model)

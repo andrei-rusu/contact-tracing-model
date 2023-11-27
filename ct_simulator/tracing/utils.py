@@ -1138,9 +1138,9 @@ class ListDelegator(list):
             error = "Could not find '" + method_name + "' in the attributes list of this ListDelegator's elements"
             raise AttributeError(error)
             
-    def draw(self, *args, ax=[None, None], **kw):
-        self[0].draw(*args, ax=ax[0], **kw)
-        self[1].draw(*args, ax=ax[1], **kw)
+    def draw(self, *args, ax=[None, None], **kwargs):
+        for i in range(len(self)):
+            self[i].draw(*args, ax=ax[i], **kwargs)
 
 
 class NoDaemonProcess(multiprocessing.Process):

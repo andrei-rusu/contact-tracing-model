@@ -581,6 +581,10 @@ class EngineDual(Engine):
                     m['tracingEffortRandom'] = efforts_for_all[0, 0]
                     # the contact tracing effort is DIFFERENT across the dual networks - element 1 in each result list
                     m['tracingEffortContact'] = efforts_for_all[:, 1]
+
+            # set the day of the simulation on the network for visualization purposes
+            true_net.set_day(int(current_time))
+            know_net.set_day(int(current_time))
                     
             # if there are any nodes that can still impact transmission, then any_inf will be True  
             any_inf = bool(m['nE'] + m['nI'])
@@ -1217,6 +1221,9 @@ class EngineOne(Engine):
                     # the contact tracing effort is the second (no dual networks here)
                     m['tracingEffortContact'] = [efforts_for_all[1]]
             
+            # set the day of the simulation on the network for visualization purposes
+            true_net.set_day(int(current_time))
+
             # if there are any nodes that can still impact transmission, then any_inf will be True  
             any_inf = bool(m['nE'] + m['nI'])
             

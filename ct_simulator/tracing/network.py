@@ -90,6 +90,8 @@ class Network(nx.Graph):
         """
         # initialize the network id to 0
         self.inet = 0
+        # initialize the day to 0
+        self.day = 0
         # for sampling dynamic edges
         self.edge_sample_seed = None
         self.edge_sample_size = None
@@ -131,8 +133,8 @@ class Network(nx.Graph):
         self.is_dual = False
         # contact reduction rate
         self.contact_reduction = 0
-        # control_day and control_iter, set by the agent - needed for drawing
-        self.control_iter = self.control_day = -1
+        # control iteration number
+        self.control_iter = -1
         # tested and traced nodes, set by the agent - needed for drawing
         self.tested = self.traced = None
         # node rankings - needed for drawing
@@ -668,6 +670,18 @@ class Network(nx.Graph):
                 # if we still track the traced time of neighbor, then it still counts for the tracing progression
                 if neigh in self.traced_time:
                     counts_nid['T'] += weight
+
+    def set_day(self, simulator_day):
+        """
+        Set the day of the simulator for visualization purposes.
+
+        Args:
+            simulator_day (int): The day of the simulator.
+
+        Returns:
+            None
+        """
+        self.day = simulator_day
             
     def get_count(self, nid, state='I'):
         """
@@ -1179,7 +1193,7 @@ class Network(nx.Graph):
                 ps.append(mpatches.Rectangle((0, 0), 1, 1, fill=False, edgecolor='blue', linewidth=.5, label=f'Testing: {self.tested}'))
                 ps.append(mpatches.Rectangle((0, 0), 1, 1, fill=False, edgecolor='blue', linewidth=.5, label=f'Tracing: {self.traced}'))
                 # create color legend
-                ld = plt.legend(handles=ps, title=f'Control Day: {self.control_iter}', loc='upper left', prop={'size': title_fontsize}, 
+                ld = plt.legend(handles=ps, title=f'Day: {self.day}', loc='upper left', prop={'size': title_fontsize}, 
                                 title_fontsize=title_fontsize, bbox_to_anchor=(0, 1), bbox_transform=plt.gcf().transFigure)
                 ld.get_title().set_fontsize(16)
 
@@ -1511,7 +1525,7 @@ class Network(nx.Graph):
                 num_actual_nodes = max(self)
                 
                 legend_id = 0
-                for legend_label in [f'Control Day: {self.control_iter}', f'Testing: {self.tested}', f'Tracing: {self.traced}']:
+                for legend_label in [f'Day: {self.day}', f'Testing: {self.tested}', f'Tracing: {self.traced}']:
                     legend_id += 1
                     self.pyvis_graph.add_node(num_actual_nodes + legend_id, **{
                                 # 'group': legend_id,
@@ -1553,7 +1567,6 @@ class Network(nx.Graph):
                 self.pyvis_graph.set_options(pyvis_options)
         
         else:
-            # self.pyvis_graph.heading = f'Control Day: {self.control_iter}' can be used as heading
             for node in self.pyvis_graph.nodes:
                 try:
                     node['color'] = node_color[int(node['label'])] if node_color else 'green'
@@ -1563,7 +1576,7 @@ class Network(nx.Graph):
                     elif 'Trac' in node['label']:
                         node['label'] = f'Tracing: {self.traced}'
                     elif 'Day' in node['label']:
-                        node['label'] = f'Control Day: {self.control_iter}'
+                        node['label'] = f'Control Day: {self.day}'
                         
             if self.is_dynamic:
                 for e, edge in enumerate(self.pyvis_graph.get_edges()):

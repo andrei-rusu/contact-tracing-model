@@ -1,4 +1,7 @@
-def create_agent(source='control_diffusion', **agent_params):
+AGENT_SOURCE_DEFAULT = 'control_diffusion'
+
+
+def create_agent(source=AGENT_SOURCE_DEFAULT, **agent_params):
     """ 
     Creates and returns a testing, tracing or vaccination control agent object using the specified parameters.
 
@@ -12,7 +15,7 @@ def create_agent(source='control_diffusion', **agent_params):
     # Import the agent module from the specified source
     if source == 'local':
         try:
-            from ..agent import Agent
+            from agent import Agent
         except ImportError:
             raise ImportError('Could not import an agent implementation from local source. Please check that one exists in the main package directory.')
         return Agent.from_dict(**agent_params)
@@ -23,7 +26,7 @@ def create_agent(source='control_diffusion', **agent_params):
         raise ValueError(f'Unrecognized agent source: {source}')
     
 
-def create_model(source='control_diffusion', **model_params):
+def create_model(source=AGENT_SOURCE_DEFAULT, **model_params):
     """ 
     Creates and returns a GNN model using the specified parameters.
 
@@ -37,7 +40,7 @@ def create_model(source='control_diffusion', **model_params):
     # Import the agent module from the specified source
     if source == 'local':
         try:
-            from ..agent import Agent
+            from agent import Agent
         except ImportError:
             raise ImportError('Could not import an agent implementation from local source. Please check that one exists in the main package directory.')
         return Agent.model_from_dict(**model_params)
