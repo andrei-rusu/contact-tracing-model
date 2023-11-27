@@ -1187,7 +1187,7 @@ class Network(nx.Graph):
                 smap = plt.cm.ScalarMappable(norm=norm_color, cmap=cmap)
                 self.cbar = plt.colorbar(smap, fraction=0.07, pad=0, orientation="horizontal", cax=self.cbar.ax if self.cbar else None)
 
-            ax.margins(margins)
+            # ax.margins(margins)
             ax.get_figure().set_facecolor(bgcolor)
             if show:
                 plt.show()

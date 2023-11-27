@@ -236,7 +236,7 @@ def main(args=None):
     # if `exp_id` does not end with '/', this signals that the user wants to use a nested folder structure, with the date as the last folder 
     if not args.exp_id.endswith('/'):
         args.save_path += f'/{time}'
-    args.draw_config['output_path'] = f"{args.save_path}/{args.draw_config['output_path']}"
+    args.draw_config['output_path'] = f"{args.save_path}/{args.draw_config.get('output_path', '')}"
     if not args.animate:
         print(f'\nExperiment date: {time}')
     
@@ -371,8 +371,6 @@ def main(args=None):
     args.is_learning_agent = False
     # If an Agent was supplied, configure Simulator as such
     if args.agent:
-        # allow for modifications over the agent dict without modifying the original reference
-        args.agent = args.agent.copy()
         # disable testing and tracing from the random exponential sampling
         args.taur = args.noncomp = 0
         # default dual = 2 to dual = 1 (tracing happens over one network only)
@@ -584,8 +582,9 @@ def run_api(**kwargs):
     """
     argns = argparse.Namespace()
 
-    for k in PARAMETER_DEFAULTS.keys():
-        vars(argns)[k] = kwargs.get(k, PARAMETER_DEFAULTS[k])
+    for k, v in PARAMETER_DEFAULTS.items():
+        v = v.copy() if isinstance(v, dict) else v
+        vars(argns)[k] = kwargs.get(k, v)
     
     return main(argns)
     

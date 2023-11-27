@@ -100,6 +100,11 @@ class EngineNet(Engine):
 
         # calculate true average degree
         args.avg_deg = true_net.avg_degree()
+        # if NO network distribution was enabled, we can use args (since it is not deepcopied) to track all average degrees of dynamic graphs
+        if return_last_net and args.is_dynamic:
+            args.k_i = {
+                '0': (args.avg_deg, true_net.avg_degree(use_weights=True))
+            }
         # if we didn't set the `netsize` by this point, it means 'nid' was not supplied in the `nettype` dict
         # hence, we assume only the nodes in the edges supplied are part of the network, setting `netsize` accordingly
         if args.netsize <= 0:
@@ -204,11 +209,6 @@ class EngineNet(Engine):
         # we can either return the events and the last network objects, OR the events and the network state variables that may have been updated here
         # typically, the first option is for serial processing, while the second is for multiprocessing (where state variables are needed for updates)     
         if return_last_net:
-            # if NO network distribution was enabled, we can use args (since it is not deepcopied) to track all average degrees of dynamic graphs
-            if args.is_dynamic:
-                args.k_i = {
-                    '0': (args.avg_deg, true_net.avg_degree(use_weights=True))
-                }
             return net_events, (true_net, know_net)
         else:
             return net_events, (args.netsize, args.avg_deg, args.overlap, args.overlap_two)
