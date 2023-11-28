@@ -32,7 +32,10 @@ setup(
         'pandas',
     ],
     extras_require={
-        'draw': [
+        'draw': [ 
+            'ipython',
+        ],
+        'draw_full': [
             'ipython',
             'pygraphviz', # used for graphviz layouts (requires graphviz to be installed)
             'pyvis', # used for interactive visualizations with pyvis
@@ -46,8 +49,10 @@ setup(
             'control_diffusion @ git+https://github.com/andrei-rusu/control-diffusion.git#egg=cotnrol_diffusion[learn]'
         ],
         'mcmc': [
+            'numpy==1.23.5',  # Specific version for the pymc3 functionality
+            'arviz==0.14.0',  # Specific version for the pymc3 functionality
+            'theano-pymc',
             'pymc3',
-            'theano',
         ],
     },
     entry_points={

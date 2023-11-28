@@ -1,7 +1,6 @@
 tracing_runs/
 data/
 temp/
-notebooks/
 fig/*
 !fig/ct.gif
 !fig/nct.gif

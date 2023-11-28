@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import math as math
-
+import pandas as pd
 import theano
 import theano.tensor as tt
 import pymc3 as pm
@@ -9,34 +9,114 @@ import pymc3 as pm
 from . import run_tracing
 
 
-def plot_cont(self, ax=None, size=1000, bounds=None, log=False, **kwargs):
+def run_loop(state_data, state_population, states=None, use_population=0., sample_kwargs=None):
     """
-    Plots the continuous distribution of the MCMC samples if assigned to pm.Continous.
+    Runs a loop of epidemic simulations to perform MCMC sampling of epidemiological parameters using pymc.
+    Also generate statistics and trace plots from the MCMC samples.
 
     Args:
-        ax (matplotlib.axes.Axes, optional): The axes on which to plot the distribution. If not provided, a new figure and axes will be created.
-        size (int, optional): The number of samples to generate if bounds are not provided. Defaults to 1000.
-        bounds (tuple, optional): The bounds of the distribution. If not provided, the bounds will be inferred from the generated samples.
-        log (bool, optional): Whether to plot the log probabilities or the true probabilities. Defaults to False.
-        **kwargs: Additional keyword arguments to pass to the plot function.
+        state_data (pd.DataFrame): DataFrame containing state-level data.
+        state_population (dict): Dictionary containing state populations.
+        states (list, optional): List of states to loop over. If None, all states in state_data will be used. Default is None.
+        use_population (float, optional): Population value to use for sampling. Default is 0.
+            If 0, the state population contained in the `state_population` dict will be used.
+            If between 0 and 1, the population will be calculated as a fraction of the state population in the `state_population` dict.
+            If between -1 and 0, the population will be calculated as a fraction of the last available total value in `state_data`.
+            If >= 1, the population will be set to that value.
+            If <=-1, the population will be calculated based on the last available total value in `state_data`.
+        sample_kwargs (dict, optional): Additional keyword arguments to pass to the `sampleMCMC()` function. Default is None.
 
     Returns:
-        matplotlib.axes.Axes: The axes on which the distribution was plotted.
+        tuple: A tuple containing two DataFrames - trace_results and summary.
+            trace_results (pd.DataFrame): DataFrame containing the trace results for each state.
+            summary (pd.DataFrame): DataFrame containing the summary statistics for each state.
     """
-    if ax is None:
-        _, ax = plt.subplots()
-    if bounds:
-        mn, mx = bounds
-    else:
-        samples = self.random(size=size)
-        mn, mx = np.min(samples), np.max(samples)
-    x = np.linspace(mn, mx, size)
-    p = self.logp(x)
-    ax.plot(x, (p if log else np.exp(p)).eval(), **kwargs)
-    return ax
+    if states is None:
+        states = state_data['state'].unique()
+    if sample_kwargs is None:
+        sample_kwargs = {}
 
-# Assign plotting function to the abstract class pm.Continuous
-pm.Continuous.plot = plot_cont
+    trace_results = []
+    summary = []
+
+    for state in states:
+        
+        data_for_state = state_data.loc[state_data.state == state]
+        if use_population == 0:
+            pop_for_state = state_population[state]
+        elif use_population > 0 and use_population < 1:
+            pop_for_state = int(use_population * state_population[state])
+        elif use_population >= 1:
+            pop_for_state = use_population
+        elif use_population <= -1:
+            pop_for_state = data_for_state.iloc[-1].total.astype('int32')
+        else:
+            pop_for_state = int(abs(use_population) * data_for_state.iloc[-1].total)
+        print(f'Running {state} with Population {pop_for_state} AND {data_for_state.hospitalized.isna().sum()} hosp NaNs',
+              f'AND {data_for_state.death.isna().sum()} death NaNs')
+        print("=======================================================================================================")
+
+        try:
+            # perform sampling, first set of starting values
+            this_sample, this_model = sampleMCMC(data_for_state, pop_for_state, 1, **sample_kwargs)
+
+        except Exception as e:
+            print(state + f' failed 1st try with {e}:')
+            sample_kwargs['find_map'] = False
+            try:
+                # perform sampling, second set of starting values
+                this_sample, this_model = sampleMCMC(data_for_state, pop_for_state, 1, **sample_kwargs)
+
+            except Exception as e:
+                print(state + f' failed 2nd try with {e}:')
+                try:
+                    # perform sampling, last set of starting values
+                    this_sample, this_model = sampleMCMC(data_for_state, pop_for_state, 2, **sample_kwargs)
+
+                except Exception as e:
+                    print(state + f' failed 3rd try with {e}:')
+                    try:
+                        # perform sampling, last set of starting values
+                        this_sample, this_model = sampleMCMC(data_for_state, pop_for_state, 3, **sample_kwargs)
+                        
+                    except Exception as e:
+                        trace_results.append({'state':state, 'trace':None, 'model': None})
+                        print(state + f' failed 4th try with {e}:')
+                        print("=======================================================================================================")
+                        continue
+
+        # create summary table
+        current_summary = (pm.summary(this_sample, var_names=['i0','beta','gamma','rho','sigma','loss_h','loss_d'], round_to=5, hdi_prob=.95)
+            .drop(['mcse_sd','ess_sd','ess_bulk','ess_tail'], axis=1, errors='ignore')
+            .reset_index().rename(columns={"index": "param"}))
+        current_summary['state'] = state
+
+        # make plots
+        pm.plot_trace(this_sample, var_names=('i0','beta','gamma','rho','sigma','loss_h','loss_d'), legend=True, 
+                      chain_prop={"color": ['C0', 'C1', 'C2', 'C3', "xkcd:purple blue"]})
+        plt.show()
+
+        sum_r_hat = sum(current_summary[1:4]['r_hat'])
+        if sum_r_hat > 3.5:
+            trace_results.append({"state":state, "trace":None, "model":None})
+            print(state + f' failed due to {sum_r_hat=}')
+            print("=======================================================================================================")
+
+        else:
+            # update summary table
+            summary.append(current_summary)
+            # update trace table
+            trace_results.append({"state":state, "trace":this_sample, "model":this_model})
+            print('summary:')
+            print("=======================================================================================================")
+            print(current_summary)
+            print(state + ' succeeded')
+            print("=======================================================================================================")
+    
+    trace_results = pd.DataFrame(trace_results)
+    if summary:
+        summary = pd.concat(summary, ignore_index=True)
+    return trace_results, summary
 
 
 k_record = 0
@@ -121,8 +201,9 @@ def call_seirt(i0, beta, gamma, rho_h, rho, pop, length, model, print_try):
     epidemic_models = ['sir', 'seir', 'covid']
     if print_try:
         print(f' - Trying with model={epidemic_models[model]}; {i0=}; {beta=}; {gamma=}; {rho_h=}; {rho=} ...')
-    # in our model, rho controls H->D instead of I/R->D, therefore the rate needs scaling
-    rho /= rho_h
+    # in our model, rho controls H->D instead of I/R->D, therefore rho needs scaling (iff rho_h != 0)
+    if rho_h != 0:
+        rho /= rho_h
     st, _ = run_tracing.run_api(
                     first_inf=i0, presample=10000, pa=.2, taur=0, taut=0, beta=beta, gamma=gamma, ph=rho_h, lamdahd=rho,
                     nettype='barabasi', netsize=pop, k=5, p=.01, use_weights=True, dual=0,
@@ -140,20 +221,24 @@ def call_seirt(i0, beta, gamma, rho_h, rho, pop, length, model, print_try):
         return np.array([int(r['mean']) for r in st['res']['average-total-hospital']], dtype=float), np.array([int(r['mean']) for r in st['res']['average-total-death']], dtype=float)
     
     
-def sampleMCMC(data, pop, start, ode=True, i0=None, beta_start=None, gamma_start=0, rho_h_start=0, rho_start=0, model=0., fit_stats=('d',), find_map=False, print_try=0, print_interval=5, print_err_limit=.05, step=None, **kwargs):
+def sampleMCMC(data, pop=1000, start_val=1, ode=True, i0=None, beta=None, gamma=0, rho_h=0, rho=0, model=0., fit_stats=('d',), 
+               find_map=False, print_try=0, print_interval=5, print_err_limit=.05, step=None, **kwargs):
     """
     Runs a Markov Chain Monte Carlo (MCMC) simulation to fit a compartmental model to COVID-19 data.
 
     Args:
         data (pandas.DataFrame): A DataFrame containing COVID-19 data.
         pop (int): The population size.
-        start (int): An integer indicating the starting point for the simulation. 1 for the last data point, 2 for the average of the last 7 days, and 3 for a fixed value.
+        start_val (int): An integer indicating the starting point for the simulation.
+            If 1, the starting value for x will either be x_start, if provided, or (x_recorded/pop)/2, otherwise.
+            If 2, the starting value for x will be (x_recorded/total + x_recorded/pop)/2
+            Otherwise, a default value will be used for each.
         ode (bool): A boolean indicating whether to use an ODE model or IBMF model (default True).
         i0 (float): The initial number of infected individuals (default None).
-        beta_start (float): The starting value for the beta parameter (default None).
-        gamma_start (float): The starting value for the gamma parameter (default 0).
-        rho_h_start (float): The starting value for the rho_h parameter (default 0).
-        rho_start (float): The starting value for the rho parameter (default 0).
+        beta (float): The starting value for the beta parameter (default None).
+        gamma (float): The starting value for the gamma parameter (default 0).
+        rho_h (float): The starting value for the rho_h parameter (default 0).
+        rho (float): The starting value for the rho parameter (default 0).
         model (int): The epidemic model to use (0=SIR, 1=SEIR, 2=COVID).
         fit_stats (tuple): A tuple containing the statistics to fit (default ('d',)).
         find_map (bool): A boolean indicating whether to find the maximum a posteriori (MAP) estimate (default False).
@@ -161,7 +246,7 @@ def sampleMCMC(data, pop, start, ode=True, i0=None, beta_start=None, gamma_start
         print_interval (int): The interval at which to print the progress (default 5).
         print_err_limit (float): The error limit for printing progress (default 0.05).
         step (dict): A dictionary containing the step method and its arguments (default None).
-        **kwargs: Additional keyword arguments.
+        **kwargs: Additional keyword arguments to pass to the `pm.sample()` function.
 
     Returns:
         None
@@ -177,7 +262,7 @@ def sampleMCMC(data, pop, start, ode=True, i0=None, beta_start=None, gamma_start
     k_record = h_record = d_record = 0
     
     # establishing model
-    with pm.Model() as model:
+    with pm.Model() as pm_model:
         
         # create population number priors at the beginning of the simulation
         i0 = pm.Poisson('i0', mu=i0 if i0 else pop/1000)
@@ -191,35 +276,35 @@ def sampleMCMC(data, pop, start, ode=True, i0=None, beta_start=None, gamma_start
         tot = float(data['total'].iloc[-1])
         
         # create starting values based on data, does not inform inference but starts at a reasonable value
-        # start beta conditional on start argument
-        beta_start = \
-            (((pos/tot)/2 if not beta_start else beta_start) if start==1 else
-            (pos/tot + pos/pop)/2 if start == 2 else .05)
+        # start_val beta conditional on start_val argument
+        beta = \
+            (((pos/tot)/2 if not beta else beta) if start_val==1 else
+            (pos/tot + pos/pop)/2 if start_val == 2 else .05)
         
-        # start gamma conditional on start argument
-        gamma_start = \
-            (((rec/tot)/2 if not gamma_start else gamma_start) if start==1 else
-            (rec/tot + rec/pop)/2 if start==2 else .047)
+        # start_val gamma conditional on start_val argument
+        gamma = \
+            (((rec/tot)/2 if not gamma else gamma) if start_val==1 else
+            (rec/tot + rec/pop)/2 if start_val==2 else .047)
         
-        # start rho conditional on start argument
-        rho_h_start = \
-            (((hos/pos)/2 if not rho_h_start else rho_h_start) if start==1 else
-            (hos/pos + hos/pop)/2 if start==2 else .036)
+        # start_val rho conditional on start_val argument
+        rho_h = \
+            (((hos/pos)/2 if not rho_h else rho_h) if start_val==1 else
+            (hos/pos + hos/pop)/2 if start_val==2 else .036)
         
-        # start rho conditional on start argument
-        rho_start = \
-            (((dea/pos)/2 if not rho_start else rho_start) if start==1 else
-            (dea/pos + dea/pop)/2 if start==2 else .036)
+        # start_val rho conditional on start_val argument
+        rho = \
+            (((dea/pos)/2 if not rho else rho) if start_val==1 else
+            (dea/pos + dea/pop)/2 if start_val==2 else .036)
         
-        print(f'{pos=}, {rec=}, {hos=}, {dea=}, {tot=}, {beta_start=:.5f}, {gamma_start=:.5f}, {rho_h_start=:.5f}, {rho_start=:.5f}')
+        print(f'{pos=}, {rec=}, {hos=}, {dea=}, {tot=}, {beta=:.5f}, {gamma=:.5f}, {rho_h=:.5f}, {rho=:.5f}')
         
         # creating priors for beta, gamma, and rho
-        beta = pm.InverseGamma('beta', mu=.05, sigma=.5, testval=beta_start)
-        gamma = pm.InverseGamma('gamma', mu=.047, sigma=.5, testval=gamma_start)
-        rho_h = pm.TruncatedNormal('rho_h', mu=.056, sigma=.01, lower=0, upper=1, testval=rho_h_start) \
-                    if fit_hosp else theano.shared(rho_h_start)
-        rho = pm.TruncatedNormal('rho', mu=.036, sigma=.01, lower=0, upper=1, testval=rho_start) \
-                    if fit_death else theano.shared(rho_start)
+        beta = pm.InverseGamma('beta', mu=.05, sigma=.5, testval=beta)
+        gamma = pm.InverseGamma('gamma', mu=.047, sigma=.5, testval=gamma)
+        rho_h = pm.TruncatedNormal('rho_h', mu=.056, sigma=.01, lower=0, upper=1, testval=rho_h) \
+                    if fit_hosp else theano.shared(rho_h)
+        rho = pm.TruncatedNormal('rho', mu=.036, sigma=.01, lower=0, upper=1, testval=rho) \
+                    if fit_death else theano.shared(rho)
         # create variance prior
         sigma = pm.HalfCauchy('sigma', beta=4)
 
@@ -297,4 +382,4 @@ def sampleMCMC(data, pop, start, ode=True, i0=None, beta_start=None, gamma_start
         model_trace = pm.sample(start=start, step=step, return_inferencedata=True, **kwargs)
 
     # return posterior samples and other information
-    return model_trace, model
+    return model_trace, pm_model
