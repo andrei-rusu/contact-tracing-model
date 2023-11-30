@@ -99,7 +99,7 @@ PARAMETER_DEFAULTS = {
     'lamdahr': [0, .083, .033],
     ## If hospitalized, daily rate entering in D based on age category: children, adults, seniors
     'lamdahd': [0, .0031, .0155],
-    ## Age-group; Can be 0 - children, 1 - adults, 2 - senior
+    ## Age-group; Can be 0 - children, 1 - adults, 2 - senior, -1/None - no age-group, rely on `group_percent`
     'group': 1,
     ## Age-group percentages (to be used when no group is selected, i.e. takes a value of -1/None)
     'group_percent': [.173, .641, .186],

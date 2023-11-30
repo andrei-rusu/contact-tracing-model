@@ -938,57 +938,74 @@ def get_json(json_or_path):
             return json.loads(handle.read())
         
         
-def process_json_results(path='saved/runs', print_id_fail=True, overlap_to_capture='overlap'):
+def process_json_results(path='tracing_runs/default_id/', keys=('pa', 'dual'), bottom_keys=('uptake', 'overlap', 'taut', 'taur'), print_id_fail=True, round_to=2):
     """
-    Processes the JSON results of a simulation run and returns a nested dictionary containing the results.
+    Processes the JSON results of simulation runs and returns a nested dictionary containing the aggregated statistics.
 
     Args:
-        path (str, optional): The path to the JSON files.
+        path (str, optional): The folder path of the JSON files.
+        keys (tuple, optional): The keys to use for the top level of the nested dictionary. Defaults to ('pa', 'dual').
+        bottom_keys (tuple, optional): The keys to use for the bottom level of the nested dictionary. Defaults to ('uptake', 'overlap', 'taut', 'taur'). 
+            We recommend changing this rarely, if ever, to maintain consistency across runs at the bottom level.
         print_id_fail (bool, optional): Whether to print the ID of any failed JSON files. Defaults to True.
-        overlap_to_capture (str, optional): The key in the JSON file to use for the overlap value. Defaults to 'overlap'.
-            Can also be 'overlap_two' for the second overlap value.
 
     Returns:
         dict: A nested dictionary containing any simulation results that could be processed correctly (without raising JSON.DecodeError).
 
     Notes:
-        This method does not fail upon encountering a JSON file that cannot be processed. Instead, it prints the ID of the file and continues.
+        The JSON files expect the following keys: 
+            - 'args' containing the arguments used to run the experiment
+            - 'res' containing the results for a single `taut` value OR the `taut` values themselves (if more than one was used in the runs)
+        This method does not fail upon encountering a JSON file that cannot be processed. Instead, it prints the ID of the file, if `print_id_fail`,
+        and continues processing the rest of the files.
     """
-    path += '*.json'
+    if not path.endswith('*.json'):
+        path += '*.json'
+    files = glob.glob(path)
+    if not files:
+        print('No JSON files found in the specified path.')
+        return None
     nested_dict = lambda: defaultdict(nested_dict)
     all_sim_res = nested_dict()
-    for file in glob.glob(path):
+    for file in files:
         try:
             json_file = get_json(file)
-            # the json files has keys: 'args' and the single 'taut' value chosen
             args = json_file['args']
-            # ignore results for taur=0 as we ignore the case where no testing is done
-            if args['taur'] == 0:
-                continue
-            taut = np.atleast_1d(args['taut'])
-            taur = args['taur']
-            over = float(round(args[overlap_to_capture], 2))
-            uptake = float(round(args.get('uptake', 1.), 2))
-            dual = args['dual']
-            pa = args['pa']
+            # note, `taut` may be a collection of values, so we need to handle it differently
+            taut_vals = np.atleast_1d(args['taut'])
+            top_keys = tuple(key if key == 'taut' else (round(args[key], round_to) if isinstance(args[key], float) else args[key])
+                            for key in keys if key in args)
+            btm_keys = tuple(key if key == 'taut' else (round(args[key], round_to) if isinstance(args[key], float) else args[key])
+                            for key in bottom_keys if key in args)
             
-            for taut_entry in taut:
+            for taut in taut_vals:
                 # if only one taut value was provided, results in newer versions are found under key 'res'
                 try:
                     results = json_file['res']
-                # for multiple taut values or older versions, the results are under keys str(taut_entry)
+                # for multiple taut values or older versions, the results are under keys str(taut)
                 except KeyError:
                     # The following try block is needed to cover for the case in which the supplied taut is either float/int
                     try:
-                        results = json_file[str(taut_entry)]
+                        results = json_file[str(taut)]
                     except KeyError:
-                        results = json_file[str(int(taut_entry))]
-                        
-                all_sim_res[pa][dual][uptake][over][taut_entry][taur] = results
-            
+                        results = json_file[str(int(taut))]
+                taut = round(taut, round_to)
+                current_level = all_sim_res
+                for key in top_keys:
+                    if key == 'taut':
+                        current_level = current_level[taut]
+                    else:
+                        current_level = current_level[key]
+                for key in btm_keys:
+                    if key == 'taut':
+                        current_level = current_level[taut]
+                    else:
+                        current_level = current_level[key]
+                current_level.update(results)
+                                    
         except json.JSONDecodeError:
             if print_id_fail:
-                print(int(re.findall('id(.*?)_', file)[0]), end=",")
+                print(int(re.findall('id(.*?)_', file)[0]), end=',')
                 
     return all_sim_res
 

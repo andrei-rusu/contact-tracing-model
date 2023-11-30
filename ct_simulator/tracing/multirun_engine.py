@@ -8,7 +8,7 @@ from time import sleep
 from itertools import count
 from collections import defaultdict, Counter
 
-from . import network
+from .network import Network
 from .stats import StatsEvent
 from .models import add_trans
 from .utils import get_pool, tqdm_redirect, is_not_empty, no_std_context, get_stateless_sampling_func, get_stateful_sampling_func, ListDelegator
@@ -91,12 +91,12 @@ class EngineNet(Engine):
         # the infection net is either predefined in the first element of args.nettype or created at random based on the model name specified by the same parameter
         # if the net is predefined, we also seed here the first_inf_nodes (this is because we did not have access to the list of nodes prior to this point)
         try:
-            true_net = network.get_from_predef(nettype['0'][0], nseed=net_seed, inet=inet, W_factor=nettype.get('Wi', 0), ids=nettype.get('nid', None),
+            true_net = Network.get_from_predef(nettype['0'][0], nseed=net_seed, inet=inet, W_factor=nettype.get('Wi', 0), ids=nettype.get('nid', None),
                                                count_importance=tr_rate, **args_dict)
         # TypeError: nettype is a str, KeyError: key '0' is not in the dynamic dict, IndexError: element 0 (inf net) not in list
         except (TypeError, KeyError, IndexError):
             # args_dict should also contain the netsize and the average degree
-            true_net = network.get_random(typ=nettype, nseed=net_seed, inet=inet, count_importance=tr_rate, **args_dict)
+            true_net = Network.get_random(typ=nettype, nseed=net_seed, inet=inet, count_importance=tr_rate, **args_dict)
 
         # calculate true average degree
         args.avg_deg = true_net.avg_degree()
@@ -129,12 +129,12 @@ class EngineNet(Engine):
         if args.dual:
             # the dual network is either predefined in the second element of args.nettype or initialized at random
             try:
-                know_net = network.get_dual_from_predef(true_net, nettype['0'][1], count_importance=tr_rate, 
+                know_net = Network.get_dual_from_predef(true_net, nettype['0'][1], count_importance=tr_rate, 
                                                         w_factor=nettype.get('Wt', 0), **args_dict)
             except (TypeError, KeyError, IndexError):
                 # First dual net depends on both overlap and uptake as this is usually the digital contact tracing net.
                 # Note this will also copy over the states, so no need to call change_state
-                know_net = network.get_dual(true_net, args.overlap, args.zadd, args.zrem, args.uptake, args.maintain_overlap,
+                know_net = Network.get_dual(true_net, args.overlap, args.zadd, args.zrem, args.uptake, args.maintain_overlap,
                                             nseed=net_seed+1, inet=inet, count_importance=tr_rate, **args_dict)
             # update the overlap on the arguments with the actual overlap used by `know_net`
             args.overlap = know_net.overlap
@@ -142,12 +142,12 @@ class EngineNet(Engine):
             # if 2 dual networks selected, create the second network and add both to a ListDelegator
             if args.dual == 2:
                 try:
-                    know_net_two = network.get_dual_from_predef(true_net, nettype['0'][2], count_importance=args.taut_two,
+                    know_net_two = Network.get_dual_from_predef(true_net, nettype['0'][2], count_importance=args.taut_two,
                                                                 w_factor=nettype.get('Wt2', 0), **args_dict)
                 except (TypeError, KeyError, IndexError):
                     # Second tracing net may attempt to maintain overlap_two as this is usually the manual tracing net. 
                     # Note this will also copy over the states, so no need to call change_state
-                    know_net_two = network.get_dual(true_net, args.overlap_two, args.zadd_two, args.zrem_two, 
+                    know_net_two = Network.get_dual(true_net, args.overlap_two, args.zadd_two, args.zrem_two, 
                                                     args.uptake_two, args.maintain_overlap_two,
                                                     nseed=net_seed+2, inet=inet, count_importance=args.taut_two, **args_dict)
                 # update the overlap on the arguments with the actual overlap used by `know_net_two`
@@ -810,10 +810,10 @@ class EngineDual(Engine):
                             # reinitialize the network seed
                             net_seed = random.randint(0, 1e9) if args.netseed is None else args.netseed + inet
                             # Note this will also copy over the states
-                            know_net = network.get_dual(true_net, args.overlap, args.zadd, args.zrem, args.uptake, args.maintain_overlap,
+                            know_net = Network.get_dual(true_net, args.overlap, args.zadd, args.zrem, args.uptake, args.maintain_overlap,
                                                         nseed=net_seed+1, inet=inet, count_importance=tr_rate, **args_dict)
                             if dual == 2:
-                                know_net_two = network.get_dual(true_net, args.overlap_two, args.zadd_two, args.zrem_two, args.uptake_two, args.maintain_overlap_two, 
+                                know_net_two = Network.get_dual(true_net, args.overlap_two, args.zadd_two, args.zrem_two, args.uptake_two, args.maintain_overlap_two, 
                                                                 nseed=net_seed+2, inet=inet, count_importance=args.taut_two, **args_dict)
                                 # know_net becomes a ListDelegator of the 2 networks
                                 know_net = ListDelegator(know_net, know_net_two)

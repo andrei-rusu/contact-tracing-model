@@ -1022,7 +1022,7 @@ class Network(nx.Graph):
             self.nodes[nid]['color'] = to_hex(colors[nid] if colors else STATES_COLOR_MAP[self.node_states[nid]])
         nx.write_graphml(self, path=path, **kwargs)
         
-    def draw(self, plotter='default', pos=None, figsize=(12, 10), show=True, ax=None, layout='spring_layout', seed=43, legend=0, with_labels=True, font_size=12, 
+    def draw(self, plotter='default', pos={}, figsize=(12, 10), show=True, ax=None, layout='spring_layout', seed=43, legend=0, with_labels=True, font_size=12, 
              font_color='white', title_fontsize=15, model='covid', node_size=300, degree_size=0, edge_color='gray', edge_width=.7, style='-', bgcolor='moccasin', 
              margins=0, dual_custom=-1, states_color_map={}, layout_kwargs=dict(k=1.8, iterations=150), output_path='fig/graph', **kwargs):
         """
@@ -1034,7 +1034,7 @@ class Network(nx.Graph):
                 - 'custom': display all network state information in one graph, 
                 - 'plotly': display all network state information in one using plotly,
                 - 'pyvis': display all network state information in one graph using pyvis.
-            pos (dict, optiomal): A dictionary with node positions as keys and positions as values. If None, a new layout is generated.
+            pos (dict): A dictionary with node positions as keys and positions as values. If None, a new layout is generated.
             figsize (tuple): Figure size in inches.
             show (bool): If True, display the plot upon calling this method.
             ax (matplotlib.axes.Axes, optional): A Matplotlib Axes instance to which the plot will be drawn. If None, fig and ax will be created here.
@@ -1127,14 +1127,15 @@ class Network(nx.Graph):
             edge_colors = edge_color
             edge_widths = edge_width
 
-        # by doing this we avoid overwriting self.pos with pos when we just want a different layout for the drawing
-        pos = pos if pos else self.pos
+        # by doing this we avoid overwriting self.pos with pos when we just want a different layout for the current drawing
+        pos = None if pos is None else (pos if pos else self.pos)
+        # if one of `pos` or `self.pos` is not None and not an empty dict, fix the specified node's positions, 
+        # then, if new nodes have appeared in self compared to the `pos`, generate a new layout around the original one
         if pos:
-            # if one of self.pos or argument pos was not None, fix the specified node's positions, then generate a new layout around ONLY IF new nodes were added
             if len(self) != len(pos):
                 pos = self.generate_layout(graph=graph, pos=pos, fixed=pos.keys(), layout_type=layout, seed=seed, **layout_kwargs)
+        # if `pos` is still None or empty by this point, generate a new layout with the supplied `seed` and use it for drawing
         else:
-            # if both were None, generate a new layout with the seed and use it for drawing
             pos = self.generate_layout(graph=graph, layout_type=layout, seed=seed, **layout_kwargs)
                         
         if degree_size:
@@ -1391,9 +1392,9 @@ class Network(nx.Graph):
                 marker=dict(
                     color=node_color,
                     size=node_size,
-                    textfont=dict(size=legend_fontsize, color=font_color),
                     line_width=1),
-                text=[f'Node: {node}<br />Class: Unknown<br />Degree: {degree}' \
+                textfont=dict(size=legend_fontsize, color=font_color),
+                text=[f'Node: {node}<br />Class: {self.node_states[node]}<br />Degree: {degree}' \
                       for node, degree in degrees],
             ))
         else:
@@ -1404,7 +1405,7 @@ class Network(nx.Graph):
             node_y = np.array(node_y)
             degrees = np.array(degrees)
             for legend_color, legend_label in legend_config:
-                # look in the 'node_color' collection for the indexes where the current 'legend_color' can be found
+                # look in the `node_color` collection for the indexes where the current `legend_color` can be found
                 indexes = np.nonzero(node_color == legend_color)[0]
                 plotly_fig.add_trace(go.Scatter(
                     name=legend_label,
@@ -1415,6 +1416,7 @@ class Network(nx.Graph):
                         color=legend_color,
                         size=node_size[indexes] if isinstance(node_size, np.ndarray) else node_size,
                         line_width=1),
+                    textfont=dict(size=legend_fontsize, color=font_color),
                     text=[f'Node: {node}<br />Class: {legend_label}<br />Degree: {degree}' \
                           for node, degree in degrees[indexes]],
                 ))
@@ -1490,7 +1492,7 @@ class Network(nx.Graph):
             for i, node in enumerate(graph.nodes):
                 label = str(self.node_names[node] if self.node_names else i)
                 node_attrs = {
-                    'title': f'Node {label}\nDegree: {degrees[node]}',
+                    'title': f'Node: {label}\nClass: {self.node_states[node]}\nDegree: {degrees[node]}',
                     'color': node_color[node] if node_color else 'green',
                     'label': label if with_labels else None,
                     'size': node_size[i] if isinstance(node_size, Iterable) else node_size,
@@ -1585,254 +1587,253 @@ class Network(nx.Graph):
 
         # return and also save
         return self.pyvis_graph.show(output_path)
+   
+    ###
+    # Network generator functions:
+    #   - get_random - returns a random Network obj with links created according to type 'typ'
+    #   - get_from_predef - returns a Network obj with links matching a predefined nx.Graph
+    #   - get_dual - a tracing subview Network obj is created from an input Network
+    #   - get_dual_from_predef - a tracing subview Network obj is created from an input nx.Graph
+    ###
+    @classmethod    
+    def get_random(cls, netsize=200, k=10, typ='random', rem_orphans=False, weighted=False, contact_reduction=0, mask_uptake=0, mask_cut=.5, sah_uptake=0, p=.1, count_importance=1, 
+                nseed=None, inet=0, use_weights=False, edge_sample_size=None, edge_prob_sampling=True, is_dynamic=False, **kwargs):
+        """
+        Generates a random network with the specified parameters.
 
-    
-###
-# Network generator functions:
-#   - get_random - returns a random Network obj with links created according to type 'typ'
-#   - get_from_predef - returns a Network obj with links matching a predefined nx.Graph
-#   - get_dual - a tracing subview Network obj is created from an input Network
-#   - get_dual_from_predef - a tracing subview Network obj is created from an input nx.Graph
-###
-    
-def get_random(netsize=200, k=10, typ='random', rem_orphans=False, weighted=False, contact_reduction=0, mask_uptake=0, mask_cut=.5, sah_uptake=0, p=.1, count_importance=1, 
-               nseed=None, inet=0, use_weights=False, edge_sample_size=None, edge_prob_sampling=True, is_dynamic=False, **kwargs):
-    """
-    Generates a random network with the specified parameters.
+        Args:
+            netsize (int, optional): The number of nodes in the network (default is 200).
+            k (int, optional): The average degree or the `m` parameter used in the network model, depending on the type of the latter (default is 10).
+            typ (str, optional): The type of random network to generate (default is 'random'). Options are described in `init_random`.
+            rem_orphans (bool, optional): Whether to remove orphan nodes (default is False).
+            weighted (bool, optional): Whether to create graph with weighted edges (default is False).
+            contact_reduction (float, optional): The percentage reduction in contacts due to interventions (default is 0).
+            mask_uptake (float, optional): The percentage of nodes using masks (default is 0).
+            mask_cut (float, optional): The mask-induced reduction in the spread (default is 0.5).
+            sah_uptake (float, optional): The percentage of nodes under stay-at-home orders (default is 0).
+            p (float, optional): The probability of adding an edge for each node (default is 0.1).
+            count_importance (int, optional): The importance of neighbor counts, used to scale the total number of neighbors for infection/tracing diffusion (default is 1).
+            nseed (int, optional): The seed for the random number generator (default is None).
+            inet (int, optional): The index of the network (default is 0).
+            use_weights (bool, optional): Whether to use weights for the calculation of neighbor counts (default is False).
+            edge_sample_size (int, optional): The number/percentage of edges to sample (default is None).
+            edge_prob_sampling (bool, optional): Whether to sample edges probabilistically, where edges are selected with probability `edge_sample_size`,
+                or deterministically, where a fraction of `edge_sample_size` edges from the total edge list are selected at random.
+            is_dynamic (bool, optional): Whether the Network changes edges dynamically (default is False).
+            **kwargs (dict, optional): Additional keyword arguments. Used to allow all network generator functions to have the same signature.
 
-    Args:
-        netsize (int, optional): The number of nodes in the network (default is 200).
-        k (int, optional): The average degree or the `m` parameter used in the network model, depending on the type of the latter (default is 10).
-        typ (str, optional): The type of random network to generate (default is 'random'). Options are described in `init_random`.
-        rem_orphans (bool, optional): Whether to remove orphan nodes (default is False).
-        weighted (bool, optional): Whether to create graph with weighted edges (default is False).
-        contact_reduction (float, optional): The percentage reduction in contacts due to interventions (default is 0).
-        mask_uptake (float, optional): The percentage of nodes using masks (default is 0).
-        mask_cut (float, optional): The mask-induced reduction in the spread (default is 0.5).
-        sah_uptake (float, optional): The percentage of nodes under stay-at-home orders (default is 0).
-        p (float, optional): The probability of adding an edge for each node (default is 0.1).
-        count_importance (int, optional): The importance of neighbor counts, used to scale the total number of neighbors for infection/tracing diffusion (default is 1).
-        nseed (int, optional): The seed for the random number generator (default is None).
-        inet (int, optional): The index of the network (default is 0).
-        use_weights (bool, optional): Whether to use weights for the calculation of neighbor counts (default is False).
-        edge_sample_size (int, optional): The number/percentage of edges to sample (default is None).
-        edge_prob_sampling (bool, optional): Whether to sample edges probabilistically, where edges are selected with probability `edge_sample_size`,
-            or deterministically, where a fraction of `edge_sample_size` edges from the total edge list are selected at random.
-        is_dynamic (bool, optional): Whether the Network changes edges dynamically (default is False).
-        **kwargs (dict, optional): Additional keyword arguments. Used to allow all network generator functions to have the same signature.
-
-    Returns:
-        G (Network): A random network with the specified parameters.
-    """
-    G = Network()
-    # give this network an index
-    G.inet = inet
-    # set whether neighbor counts use weights
-    G.use_weights = use_weights
-    # attach a neighbor count importance to this network
-    G.count_importance = count_importance
-    # whether edges will be dynamic
-    G.is_dynamic = is_dynamic
-    # for interventions like partial lockdowns
-    G.contact_reduction = contact_reduction
-    
-    rand = np.random.RandomState(nseed)
-    # uptake of masks and stay-at-home orders
-    if mask_uptake:
-        mask_uptake = int(mask_uptake if mask_uptake >= 1 else mask_uptake * netsize)
-        G.node_mask = set(rand.choice(range(netsize), mask_uptake, replace=False))
-        G.mask_cut = mask_cut
-    if sah_uptake:
-        sah_uptake = int(sah_uptake if sah_uptake >= 1 else sah_uptake * netsize)
-        G.node_sah = rand.choice(range(netsize), sah_uptake, replace=False)
+        Returns:
+            G (Network): A random network with the specified parameters.
+        """
+        G = cls()
+        # give this network an index
+        G.inet = inet
+        # set whether neighbor counts use weights
+        G.use_weights = use_weights
+        # attach a neighbor count importance to this network
+        G.count_importance = count_importance
+        # whether edges will be dynamic
+        G.is_dynamic = is_dynamic
+        # for interventions like partial lockdowns
+        G.contact_reduction = contact_reduction
         
-    # initialize random conections
-    G.init_random(netsize, k, typ=typ, p=p, weighted=weighted, seed=nseed, edge_sample_size=edge_sample_size, edge_prob_sampling=edge_prob_sampling)
-    # Set the active node list (i.e. without orphans if rem_orphans=True)
-    G.node_list = list(G)
-    if rem_orphans:
-        for nid in G.nodes:
-            if G.degree(nid) == 0:
-                G.node_list.remove(nid)
-                # we mark orphans as isolated (even if NOT technically traced, this will not impact the outcome since orphans have no neighbors)
-                # Note that the node_traced list will be copied over to the tracing network!
-                G.node_traced[nid] = True
-    return G
+        rand = np.random.RandomState(nseed)
+        # uptake of masks and stay-at-home orders
+        if mask_uptake:
+            mask_uptake = int(mask_uptake if mask_uptake >= 1 else mask_uptake * netsize)
+            G.node_mask = set(rand.choice(range(netsize), mask_uptake, replace=False))
+            G.mask_cut = mask_cut
+        if sah_uptake:
+            sah_uptake = int(sah_uptake if sah_uptake >= 1 else sah_uptake * netsize)
+            G.node_sah = rand.choice(range(netsize), sah_uptake, replace=False)
+            
+        # initialize random conections
+        G.init_random(netsize, k, typ=typ, p=p, weighted=weighted, seed=nseed, edge_sample_size=edge_sample_size, edge_prob_sampling=edge_prob_sampling)
+        # Set the active node list (i.e. without orphans if rem_orphans=True)
+        G.node_list = list(G)
+        if rem_orphans:
+            for nid in G.nodes:
+                if G.degree(nid) == 0:
+                    G.node_list.remove(nid)
+                    # we mark orphans as isolated (even if NOT technically traced, this will not impact the outcome since orphans have no neighbors)
+                    # Note that the node_traced list will be copied over to the tracing network!
+                    G.node_traced[nid] = True
+        return G
 
+    @classmethod
+    def get_from_predef(cls, nx_or_edgelist, rem_orphans=False, ids=None, count_importance=1, nseed=None, inet=0, use_weights=False, contact_reduction=0, mask_uptake=0, mask_cut=.5, 
+                        sah_uptake=0, W_factor=0, K_factor=10, reindex=False, **kwargs):
+        """
+        Returns a Network object generated from a pre-defined network.
 
-def get_from_predef(nx_or_edgelist, rem_orphans=False, ids=None, count_importance=1, nseed=None, inet=0, use_weights=False, contact_reduction=0, mask_uptake=0, mask_cut=.5, 
-                    sah_uptake=0, W_factor=0, K_factor=10, reindex=False, **kwargs):
-    """
-    Returns a Network object generated from a pre-defined network.
+        Args:
+            nx_or_edgelist (networkx.Graph or list): A networkx graph or a list of edges.
+            rem_orphans (bool, optional): Whether to remove orphan nodes (default in False).
+            ids (list, optional): A list of supplied node IDs to use for the network (default is None). These are used only if `nx_or_edgelist` is NOT a nx graph.
+                If `ids` is empty (and `nx_or_edgelist` is a list of edges), the node IDs are inferred from the edge list.
+            count_importance (int, optional): The importance of neighbor counts, used to scale the total number of neighbors for infection/tracing diffusion (default is 1).
+            nseed (int, optional): Seed for the random number generator (Default is None).
+            inet (int, optional): Index for the network (default is 0).
+            use_weights (bool, optional): Whether to use weights for the calculation of neighbor counts (default is False).
+            contact_reduction (float, optional): Contact reduction for interventions like partial lockdowns (default is 0).
+            mask_uptake (float, optional): The percentage of nodes using masks (default is 0).
+            mask_cut (float, optional): The mask-induced reduction in the spread (default is 0.5).
+            sah_uptake (float, optional): The percentage of nodes under stay-at-home orders (default is 0).
+            W_factor (int, optional): Denominator of the normalization factor for edge weights (default is 0, where the `norm_factor` is set to 1).
+            K_factor (int, optional): Numerator of the normalization factor for edge weights (default is 10).
+            reindex (bool, optional): Whether to reindex the node IDs - i.e. make ID range (0,netsize) (default is False).
+            **kwargs: Additional keyword arguments. Used to allow all network generator functions to have the same signature.
 
-    Args:
-        nx_or_edgelist (networkx.Graph or list): A networkx graph or a list of edges.
-        rem_orphans (bool, optional): Whether to remove orphan nodes (default in False).
-        ids (list, optional): A list of supplied node IDs to use for the network (default is None). These are used only if `nx_or_edgelist` is NOT a nx graph.
-            If `ids` is empty (and `nx_or_edgelist` is a list of edges), the node IDs are inferred from the edge list.
-        count_importance (int, optional): The importance of neighbor counts, used to scale the total number of neighbors for infection/tracing diffusion (default is 1).
-        nseed (int, optional): Seed for the random number generator (Default is None).
-        inet (int, optional): Index for the network (default is 0).
-        use_weights (bool, optional): Whether to use weights for the calculation of neighbor counts (default is False).
-        contact_reduction (float, optional): Contact reduction for interventions like partial lockdowns (default is 0).
-        mask_uptake (float, optional): The percentage of nodes using masks (default is 0).
-        mask_cut (float, optional): The mask-induced reduction in the spread (default is 0.5).
-        sah_uptake (float, optional): The percentage of nodes under stay-at-home orders (default is 0).
-        W_factor (int, optional): Denominator of the normalization factor for edge weights (default is 0, where the `norm_factor` is set to 1).
-        K_factor (int, optional): Numerator of the normalization factor for edge weights (default is 10).
-        reindex (bool, optional): Whether to reindex the node IDs - i.e. make ID range (0,netsize) (default is False).
-        **kwargs: Additional keyword arguments. Used to allow all network generator functions to have the same signature.
+        Returns:
+            G (Network): A random network with the specified parameters.
 
-    Returns:
-        G (Network): A random network with the specified parameters.
+        Notes:
+            - If a networkx graph is passed, the node IDs are inferred from the graph.
+            - If a list of edges is passed, the node IDs are inferred from the edge list.
+            - If a list of edges is passed, the node IDs can be supplied in the optional argument 'nettype' as a dictionary with a 'nid' key.
+            - If norm_factor = K_factor / W_factor is <= 1, the edge weights are not normalized.
+        """
+        G = cls()
+        # give this network an index
+        G.inet = inet
+        # set whether neighbor counts use weights
+        G.use_weights = use_weights
+        # give this network a count_importance -> used to supply different tau rates
+        G.count_importance = count_importance
+        # for interventions like partial lockdowns
+        G.contact_reduction = contact_reduction
+        # normalization factor for edges
+        G.norm_factor = K_factor / W_factor if W_factor else 1
+        # Try to access fields based on nx API. If this fails, assume only a list of edges was supplied in nx_or_edgelist
+        try:
+            ids = nx_or_edgelist.nodes
+            edges = list(nx_or_edgelist.edges(data=True))
+        except AttributeError:
+            # if user has not supplied node ids, infer the nodes from the edge list
+            if not ids:
+                # Need to obtain the set of node ids from the edge list
+                edge_arr = np.array(nx_or_edgelist, dtype=object)
+                ids = set(edge_arr[:, 0]).union(set(edge_arr[:, 1]))
+            # edges will be the unmodified nx_or_edgelist argument
+            edges = nx_or_edgelist
+        if reindex:
+            new_ids = range(len(ids))
+            G.node_names = dict(zip(new_ids, ids))
+            G.names_to_node = dict(zip(ids, new_ids))
+            ids = new_ids
+            
+        # add the ids of nodes to the network
+        G.add_mult(ids=ids, state='S', traced=False)
+        # copy over already generated drawing layout, if one exists
+        try:
+            G.pos = nx_or_edgelist.pos
+        except AttributeError:
+            pass
+        rand = np.random.RandomState(nseed)
+        # uptake of masks and stay-at-home orders
+        if mask_uptake:
+            mask_uptake = int(mask_uptake if mask_uptake >= 1 else mask_uptake * len(ids))
+            G.node_mask = set(rand.choice(G.nodes, mask_uptake, replace=False))
+            G.mask_cut = mask_cut
+        if sah_uptake:
+            sah_uptake = int(sah_uptake if sah_uptake >= 1 else sah_uptake * len(ids))
+            G.node_sah = rand.choice(G.nodes, sah_uptake, replace=False)
+            
+        # checking if there are any edges; agnostic for python iterables and np.arrays
+        if is_not_empty(edges):
+            # supply edges but do not update counts yet since the first infected have not been set by this point
+            G.add_links(edges, update=False, reindex=reindex)
+            # record first set of edges
+            G.first_edges = list(G.edges(data=True))
 
-    Notes:
-        - If a networkx graph is passed, the node IDs are inferred from the graph.
-        - If a list of edges is passed, the node IDs are inferred from the edge list.
-        - If a list of edges is passed, the node IDs can be supplied in the optional argument 'nettype' as a dictionary with a 'nid' key.
-        - If norm_factor = K_factor / W_factor is <= 1, the edge weights are not normalized.
-    """
-    G = Network()
-    # give this network an index
-    G.inet = inet
-    # set whether neighbor counts use weights
-    G.use_weights = use_weights
-    # give this network a count_importance -> used to supply different tau rates
-    G.count_importance = count_importance
-    # for interventions like partial lockdowns
-    G.contact_reduction = contact_reduction
-    # normalization factor for edges
-    G.norm_factor = K_factor / W_factor if W_factor else 1
-    # Try to access fields based on nx API. If this fails, assume only a list of edges was supplied in nx_or_edgelist
-    try:
-        ids = nx_or_edgelist.nodes
-        edges = list(nx_or_edgelist.edges(data=True))
-    except AttributeError:
-        # if user has not supplied node ids, infer the nodes from the edge list
-        if not ids:
-            # Need to obtain the set of node ids from the edge list
-            edge_arr = np.array(nx_or_edgelist, dtype=object)
-            ids = set(edge_arr[:, 0]).union(set(edge_arr[:, 1]))
-        # edges will be the unmodified nx_or_edgelist argument
-        edges = nx_or_edgelist
-    if reindex:
-        new_ids = range(len(ids))
-        G.node_names = dict(zip(new_ids, ids))
-        G.names_to_node = dict(zip(ids, new_ids))
-        ids = new_ids
-        
-    # add the ids of nodes to the network
-    G.add_mult(ids=ids, state='S', traced=False)
-    # copy over already generated drawing layout, if one exists
-    try:
-        G.pos = nx_or_edgelist.pos
-    except AttributeError:
-        pass
-    rand = np.random.RandomState(nseed)
-    # uptake of masks and stay-at-home orders
-    if mask_uptake:
-        mask_uptake = int(mask_uptake if mask_uptake >= 1 else mask_uptake * len(ids))
-        G.node_mask = set(rand.choice(G.nodes, mask_uptake, replace=False))
-        G.mask_cut = mask_cut
-    if sah_uptake:
-        sah_uptake = int(sah_uptake if sah_uptake >= 1 else sah_uptake * len(ids))
-        G.node_sah = rand.choice(G.nodes, sah_uptake, replace=False)
-        
-    # checking if there are any edges; agnostic for python iterables and np.arrays
-    if is_not_empty(edges):
-        # supply edges but do not update counts yet since the first infected have not been set by this point
-        G.add_links(edges, update=False, reindex=reindex)
-        # record first set of edges
-        G.first_edges = list(G.edges(data=True))
+        # Set the active node list (i.e. without orphans if rem_orphans=True)
+        G.node_list = list(G)
+        if rem_orphans:
+            for nid in G.nodes:
+                if G.degree(nid) == 0:
+                    G.node_list.remove(nid)
+                    # we mark orphans as isolated (even if NOT technically traced, this will not impact the outcome since orphans have no neighbors)
+                    # Note that the node_traced list will be copied over to the tracing network!
+                    G.node_traced[nid] = True
+        return G
 
-    # Set the active node list (i.e. without orphans if rem_orphans=True)
-    G.node_list = list(G)
-    if rem_orphans:
-        for nid in G.nodes:
-            if G.degree(nid) == 0:
-                G.node_list.remove(nid)
-                # we mark orphans as isolated (even if NOT technically traced, this will not impact the outcome since orphans have no neighbors)
-                # Note that the node_traced list will be copied over to the tracing network!
-                G.node_traced[nid] = True
-    return G
+    @staticmethod
+    def get_dual(G, net_overlap=None, z_add=0, z_rem=5, keep_nodes_percent=1, conserve_overlap=True, count_importance=1, nseed=None, active_based_noising=False, **kwargs):
+        """
+        Returns a copy of the input graph with noise added to its links, marked as a dual network. This can be used to generate a tracing subview of the input network.
 
+        Args:
+            G (networkx.Graph): input graph.
+            net_overlap (float, optional): overlap between the two networks.
+            z_add (float, optional): probability of adding a link.
+            z_rem (float, optional): probability of removing a link.
+            keep_nodes_percent (float, optional): percentage of nodes to keep in the tracing subview (i.e. uptake).
+            conserve_overlap (bool, optional): whether to conserve overlap between the two networks.
+            count_importance (int, optional): importance of neighborhood node counts (i.e. tau_t).
+            nseed (int, optional): seed for random number generator.
+            active_based_noising (bool, optional): whether to calculate the fraction of noise links based on active nonorphan nodes only.
+            **kwargs: Additional keyword arguments. Used to allow all network generator functions to have the same signature.
 
-def get_dual(G, net_overlap=None, z_add=0, z_rem=5, keep_nodes_percent=1, conserve_overlap=True, count_importance=1, nseed=None, active_based_noising=False, **kwargs):
-    """
-    Returns a copy of the input graph with noise added to its links, marked as a dual network. This can be used to generate a tracing subview of the input network.
+        Returns:
+            D (networkx.Graph): copy of the input graph with noise added to its links, marked as a dual network
+        """
+        # the copy of the graph will include everything at this point, including active node_list, node_states, node_traced and node_counts
+        # it will also have a SEPARATE entity for node_counts
+        D = G.copy()
+        # mark this net as dual
+        D.is_dual = True
+        # set the importance
+        D.count_importance = count_importance
+        # noise the links according to the parameters given
+        D.noising_links(net_overlap, z_add, z_rem, keep_nodes_percent, conserve_overlap, update=True, seed=nseed, active_based_noising=active_based_noising)
+        return D
 
-    Args:
-        G (networkx.Graph): input graph.
-        net_overlap (float, optional): overlap between the two networks.
-        z_add (float, optional): probability of adding a link.
-        z_rem (float, optional): probability of removing a link.
-        keep_nodes_percent (float, optional): percentage of nodes to keep in the tracing subview (i.e. uptake).
-        conserve_overlap (bool, optional): whether to conserve overlap between the two networks.
-        count_importance (int, optional): importance of neighborhood node counts (i.e. tau_t).
-        nseed (int, optional): seed for random number generator.
-        active_based_noising (bool, optional): whether to calculate the fraction of noise links based on active nonorphan nodes only.
-        **kwargs: Additional keyword arguments. Used to allow all network generator functions to have the same signature.
+    @staticmethod
+    def get_dual_from_predef(G, nx_or_edgelist, count_importance=1, W_factor=0, K_factor=10, reindex=False, **kwargs):
+        """
+        Returns a Network object generated from a pre-defined network, marked as a dual network. This can be used to generate a tracing subview of the input network.
 
-    Returns:
-        D (networkx.Graph): copy of the input graph with noise added to its links, marked as a dual network
-    """
-    # the copy of the graph will include everything at this point, including active node_list, node_states, node_traced and node_counts
-    # it will also have a SEPARATE entity for node_counts
-    D = G.copy()
-    # mark this net as dual
-    D.is_dual = True
-    # set the importance
-    D.count_importance = count_importance
-    # noise the links according to the parameters given
-    D.noising_links(net_overlap, z_add, z_rem, keep_nodes_percent, conserve_overlap, update=True, seed=nseed, active_based_noising=active_based_noising)
-    return D
+        Args:
+            G (networkx.Graph): input graph.
+            nx_or_edgelist (networkx.Graph or list): A networkx graph or a list of edges to be used for the generation of the dual view.
+            count_importance (int, optional): importance of neighborhood node counts (i.e. tau_t).
+            W_factor (int, optional): Denominator of the normalization factor for edge weights (default is 0, where the `norm_factor` is set to 1).
+            K_factor (int, optional): Numerator of the normalization factor for edge weights (default is 10).
+            reindex (bool, optional): Whether to reindex the node IDs - i.e. make ID range (0,netsize) (default is False).
+            **kwargs: Additional keyword arguments. Used to allow all network generator functions to have the same signature.
 
+        Returns:
+            D (networkx.Graph): copy of the input graph with noise added to its links, marked as a dual network.
 
-def get_dual_from_predef(G, nx_or_edgelist, count_importance=1, W_factor=0, K_factor=10, reindex=False, **kwargs):
-    """
-    Returns a Network object generated from a pre-defined network, marked as a dual network. This can be used to generate a tracing subview of the input network.
-
-    Args:
-        G (networkx.Graph): input graph.
-        nx_or_edgelist (networkx.Graph or list): A networkx graph or a list of edges to be used for the generation of the dual view.
-        count_importance (int, optional): importance of neighborhood node counts (i.e. tau_t).
-        W_factor (int, optional): Denominator of the normalization factor for edge weights (default is 0, where the `norm_factor` is set to 1).
-        K_factor (int, optional): Numerator of the normalization factor for edge weights (default is 10).
-        reindex (bool, optional): Whether to reindex the node IDs - i.e. make ID range (0,netsize) (default is False).
-        **kwargs: Additional keyword arguments. Used to allow all network generator functions to have the same signature.
-
-    Returns:
-        D (networkx.Graph): copy of the input graph with noise added to its links, marked as a dual network.
-
-    Notes:
-        - The node IDs are mantained from the input graph G.
-        - The edges are added to the dual copy according to the input nx_or_edgelist.
-        - If norm_factor = K_factor / W_factor is <= 1, the edge weights are not normalized.
-    """
-    # the copy of the graph will include everything at this point, including active node_list, node_states, node_traced
-    # it will also have a SEPARATE entity for node_counts
-    D = G.copy()
-    # mark this net as dual
-    D.is_dual = True
-    # give this network a count_importance -> used to supply different tau rates
-    D.count_importance = count_importance
-    # used for normalization of weights
-    D.norm_factor = K_factor / W_factor if W_factor else 1
-    # Try to access fields of nx_or_edgelist based on nx API. If this fails, assume only a list of edges was supplied in nx_or_edgelist
-    try:
-        edges = list(nx_or_edgelist.edges(data=True))
-    except AttributeError:
-        edges = nx_or_edgelist
-    if reindex:
-        new_ids = range(len(ids))
-        G.node_names = dict(zip(new_ids, ids))
-        G.names_to_node = dict(zip(ids, new_ids))
-        ids = new_ids
-    # clear the true network edges since we want to put the predefined set in
-    D.clear_edges()
-    # supply edges and norm_factor weight normalization factor
-    D.add_links(edges, update=True)
-    return D
+        Notes:
+            - The node IDs are mantained from the input graph G.
+            - The edges are added to the dual copy according to the input nx_or_edgelist.
+            - If norm_factor = K_factor / W_factor is <= 1, the edge weights are not normalized.
+        """
+        # the copy of the graph will include everything at this point, including active node_list, node_states, node_traced
+        # it will also have a SEPARATE entity for node_counts
+        D = G.copy()
+        # mark this net as dual
+        D.is_dual = True
+        # give this network a count_importance -> used to supply different tau rates
+        D.count_importance = count_importance
+        # used for normalization of weights
+        D.norm_factor = K_factor / W_factor if W_factor else 1
+        # Try to access fields of nx_or_edgelist based on nx API. If this fails, assume only a list of edges was supplied in nx_or_edgelist
+        try:
+            edges = list(nx_or_edgelist.edges(data=True))
+        except AttributeError:
+            edges = nx_or_edgelist
+        if reindex:
+            new_ids = range(len(ids))
+            G.node_names = dict(zip(new_ids, ids))
+            G.names_to_node = dict(zip(ids, new_ids))
+            ids = new_ids
+        # clear the true network edges since we want to put the predefined set in
+        D.clear_edges()
+        # supply edges and norm_factor weight normalization factor
+        D.add_links(edges, update=True)
+        return D
 
 
 def configuration_model(deg_sequence, seed=0):
