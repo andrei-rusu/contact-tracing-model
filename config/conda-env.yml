@@ -8,6 +8,8 @@ dependencies:
   - matplotlib
   - numpy
   - networkx
+  - scipy
   - tqdm
+  - dill
   - pandas
   - ipython

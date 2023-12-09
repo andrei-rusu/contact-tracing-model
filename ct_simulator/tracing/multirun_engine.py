@@ -4,7 +4,6 @@ import dill
 import matplotlib.pyplot as plt
 
 from math import ceil
-from time import sleep
 from itertools import count
 from collections import defaultdict, Counter
 
@@ -308,36 +307,38 @@ class EngineDual(Engine):
         draw = args.draw
         draw_iter = args.draw_iter
         animate = args.animate
-        draw_plotter = args.draw_config.get('plotter', 'default')
-        figsize = args.draw_config.get('figsize', (20, 10) if draw_plotter == 'default' else (10, 10))
-        fontsize = args.draw_config.get('title_fontsize', 15)
-        output_path = args.draw_config.get('output_path', 'fig/graph')
+        draw_config = args.draw_config
+        draw_config_no_path = {k: v for k, v in draw_config.items() if k != 'output_path'}
+        draw_plotter = draw_config.get('plotter', 'default')
+        fontsize = draw_config.get('title_fontsize', 15)
+        figsize = draw_config.get('figsize', (10, 10))
+        dpi = draw_config.get('dpi', 150)
         
         # If either of the drawing flag is enabled, instantiate drawing figure and axes, and draw initial state
         if draw or draw_iter:
             # import IPython here to avoid dependency if no drawing is performed
             from IPython import display
             if 'pyvis' in draw_plotter or 'plotly' in draw_plotter:
-                display.display(true_net.draw(seed=args.netseed, model=args.model, **args.draw_config), clear=animate)
-                if not draw_iter:
-                    sleep(.5)
+                display.display(true_net.draw(seed=args.netseed, model=args.model, **draw_config), clear=animate)
             else:
                 if draw_plotter == 'default':
-                    fig, ax = plt.subplots(nrows=1, ncols=int(dual) + 1, figsize=figsize, dpi=150)
+                    fig, ax = plt.subplots(nrows=1, ncols=int(dual) + 1, figsize=figsize, dpi=dpi)
                     # we make plots for the true network + all the dual networks
                     ax[0].set_title(NETWORK_TITLE, fontsize=fontsize)
-                    true_net.draw(seed=args.netseed, show=False, ax=ax[0], **args.draw_config)
+                    true_net.draw(seed=args.netseed, show=False, ax=ax[0], **draw_config_no_path)
                     ax[1].set_title(NETWORK_TITLE_DUAL, fontsize=fontsize)
                     if dual == 2:
                         ax[1].set_title(NETWORK_TITLE_DUAL_TWO, fontsize=fontsize)
                         ax[-1].set_title(NETWORK_TITLE_DUAL_THREE, fontsize=fontsize)
-                    know_net.draw(pos=true_net.pos, show=False, ax=ax[1:], model=args.model, **args.draw_config)
+                    know_net.draw(pos=true_net.pos, show=False, ax=ax[1:], model=args.model, **draw_config)
                 else:
-                    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=figsize, dpi=150)
+                    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=figsize, dpi=dpi)
                     true_net.is_dual = True
-                    true_net.draw(show=False, ax=ax, seed=args.netseed, model=args.model, **args.draw_config)
+                    true_net.draw(show=False, ax=ax, seed=args.netseed, model=args.model, **draw_config)
             
                 display.display(fig, clear=animate)
+            if not draw_iter:
+                plt.pause(.5)
 
         # simulation objects
         sim_true = true_net.get_simulator(trans_true, already_exp=samp_already_exp, **args_dict)
@@ -691,23 +692,23 @@ class EngineDual(Engine):
             
             # draw network at the end of each inner state if option selected
             if draw_iter:
-                sleep(int(draw_iter))
+                plt.pause(draw_iter)
                 print('State after events iteration ' + str(i) + ':')
                 if 'pyvis' in draw_plotter or 'plotly' in draw_plotter:
-                    display.display(true_net.draw(seed=args.netseed, model=args.model, **args.draw_config), clear=animate)
+                    display.display(true_net.draw(seed=args.netseed, model=args.model, **draw_config), clear=animate)
                 else:
                     fig = plt.figure(1)
                     clear_axis(ax)
                     if draw_plotter == 'default':
                         ax[0].set_title(NETWORK_TITLE, fontsize=fontsize)
-                        true_net.draw(seed=args.netseed, show=False, ax=ax[0], **args.draw_config)
+                        true_net.draw(seed=args.netseed, show=False, ax=ax[0], **draw_config_no_path)
                         ax[1].set_title(NETWORK_TITLE_DUAL, fontsize=fontsize)
                         if dual == 2:
                             ax[1].set_title(NETWORK_TITLE_DUAL_TWO, fontsize=fontsize)
                             ax[-1].set_title(NETWORK_TITLE_DUAL_THREE, fontsize=fontsize)
-                        know_net.draw(pos=true_net.pos, show=False, ax=ax[1:], model=args.model, **args.draw_config)
+                        know_net.draw(pos=true_net.pos, show=False, ax=ax[1:], model=args.model, **draw_config)
                     else:
-                        true_net.draw(show=False, ax=ax, seed=args.netseed, model=args.model, **args.draw_config)
+                        true_net.draw(show=False, ax=ax, seed=args.netseed, model=args.model, **draw_config)
                     display.display(fig, clear=animate)
 
             # record metrics after event run for time current_time=e.time
@@ -826,25 +827,24 @@ class EngineDual(Engine):
         if draw:
             print('Final state:')
             if 'pyvis' in draw_plotter or 'plotly' in draw_plotter:
-                display.display(true_net.draw(seed=args.netseed, model=args.model, **args.draw_config))
+                display.display(true_net.draw(seed=args.netseed, model=args.model, **draw_config))
             else:
                 fig = plt.figure(1)
                 clear_axis(ax)
                 if draw_plotter == 'default':
                     ax[0].set_title(NETWORK_TITLE, fontsize=fontsize)
-                    true_net.draw(show=False, ax=ax[0], **args.draw_config)
+                    true_net.draw(show=False, ax=ax[0], **draw_config_no_path)
                     ax[1].set_title(NETWORK_TITLE_DUAL, fontsize=fontsize)
                     if dual == 2:
                         ax[1].set_title(NETWORK_TITLE_DUAL_TWO, fontsize=fontsize)
                         ax[-1].set_title(NETWORK_TITLE_DUAL_THREE, fontsize=fontsize)
-                    know_net.draw(pos=true_net.pos, show=False, ax=ax[1:], model=args.model, **args.draw_config)
+                    know_net.draw(pos=true_net.pos, show=False, ax=ax[1:], model=args.model, **draw_config)
                 else:
-                    true_net.draw(show=False, ax=ax, seed=args.netseed, model=args.model, **args.draw_config)
+                    true_net.draw(show=False, ax=ax, seed=args.netseed, model=args.model, **draw_config)
                 display.display(fig, clear=animate)
-                if draw == 2:
-                    plt.savefig(f"{output_path}-{sim_id}.pdf", bbox_inches='tight')
             
-        if not animate:
+        if (draw or draw_iter) and not animate:
+            plt.pause(2)
             plt.close()
 
         # call `agent.finish` if the agent exists and it has a `finish` method
@@ -954,34 +954,37 @@ class EngineOne(Engine):
         draw = args.draw
         draw_iter = args.draw_iter
         animate = args.animate
-        draw_plotter = args.draw_config.get('plotter', 'default')
-        figsize = args.draw_config.get('figsize', (20, 10) if draw_plotter == 'default' else (10, 10))
-        fontsize = args.draw_config.get('title_fontsize', 15)
-        output_path = args.draw_config.get('output_path', 'fig/graph')
+        draw_config = args.draw_config
+        draw_config_no_path = {k: v for k, v in draw_config.items() if k != 'output_path'}
+        draw_plotter = draw_config.get('plotter', 'default')
+        fontsize = draw_config.get('title_fontsize', 15)
+        figsize = draw_config.get('figsize', (10, 10))
+        dpi = draw_config.get('dpi', 150)
         
         # If either of the drawing flag is enabled, instantiate drawing figure and axes, and draw initial state
         if draw or draw_iter > 0:
             # import IPython here to avoid dependency if no drawing is performed
             from IPython import display
             if 'pyvis' in draw_plotter or 'plotly' in draw_plotter:
-                display.display(true_net.draw(seed=args.netseed, model=args.model, **args.draw_config), clear=animate)
-                if not draw_iter:
-                    sleep(.5)
+                display.display(true_net.draw(seed=args.netseed, model=args.model, **draw_config), clear=animate)
             else:
                 if draw_plotter == 'default':
-                    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=figsize, dpi=150)
+                    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=figsize, dpi=dpi)
+                    print(fig.get_dpi(), fig.get_size_inches())
                     ax[0].set_title('Infection Progress', fontsize=fontsize)
                     true_net.is_dual = False
-                    true_net.draw(seed=args.netseed, show=False, ax=ax[0], **args.draw_config)
+                    true_net.draw(seed=args.netseed, show=False, ax=ax[0], **draw_config_no_path)
                     ax[1].set_title('Tracing Progress', fontsize=fontsize)
                     true_net.is_dual = True
-                    true_net.draw(show=False, ax=ax[1], model=args.model, **args.draw_config)
+                    true_net.draw(show=False, ax=ax[1], model=args.model, **draw_config)
                 else:
-                    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=figsize, dpi=150)
+                    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=figsize, dpi=dpi)
                     true_net.is_dual = True
-                    true_net.draw(show=False, ax=ax, seed=args.netseed, model=args.model, **args.draw_config)
+                    true_net.draw(show=False, ax=ax, seed=args.netseed, model=args.model, **draw_config)
                     
                 display.display(fig, clear=animate)
+            if not draw_iter:
+                plt.pause(.5)
             
         # set the dual flag such that true_net can be interpreted as the tracing network
         true_net.is_dual = True
@@ -1328,22 +1331,22 @@ class EngineOne(Engine):
             m['totalFalseNegative'] = m['totalInfectious'] - (m['totalTraced'] - m['totalFalseTraced'] - m['totalExposedTraced'])
             
             if draw_iter:
-                sleep(int(draw_iter))
+                plt.pause(draw_iter)
                 print('State after events iteration ' + str(i) + ':')
                 if 'pyvis' in draw_plotter or 'plotly' in draw_plotter:
-                    display.display(true_net.draw(seed=args.netseed, model=args.model, **args.draw_config), clear=animate)
+                    display.display(true_net.draw(seed=args.netseed, model=args.model, **draw_config), clear=animate)
                 else:
                     fig = plt.figure(1)
                     clear_axis(ax)
                     if draw_plotter == 'default':
                         ax[0].set_title('Infection Progress', fontsize=fontsize)
                         true_net.is_dual = False
-                        true_net.draw(seed=args.netseed, show=False, ax=ax[0], **args.draw_config)
+                        true_net.draw(seed=args.netseed, show=False, ax=ax[0], **draw_config_no_path)
                         ax[1].set_title('Tracing Progress', fontsize=fontsize)
                         true_net.is_dual = True
-                        true_net.draw(show=False, ax=ax[1], model=args.model, **args.draw_config)
+                        true_net.draw(show=False, ax=ax[1], model=args.model, **draw_config)
                     else:
-                        true_net.draw(show=False, ax=ax, seed=args.netseed, model=args.model, **args.draw_config)
+                        true_net.draw(show=False, ax=ax, seed=args.netseed, model=args.model, **draw_config)
                     display.display(fig, clear=animate)
                 
             # record metrics after event run for time current_time=e.time
@@ -1434,24 +1437,23 @@ class EngineOne(Engine):
         if draw:
             print('Final state:')
             if 'pyvis' in draw_plotter or 'plotly' in draw_plotter:
-                display.display(true_net.draw(seed=args.netseed, model=args.model, **args.draw_config))
+                display.display(true_net.draw(seed=args.netseed, model=args.model, **draw_config))
             else:
                 fig = plt.figure(1)
                 clear_axis(ax)
                 if draw_plotter == 'default':
                     ax[0].set_title('Infection Progress', fontsize=fontsize)
                     true_net.is_dual = False
-                    true_net.draw(show=False, ax=ax[0], **args.draw_config)
+                    true_net.draw(show=False, ax=ax[0], **draw_config_no_path)
                     ax[1].set_title('Tracing Progress', fontsize=fontsize)
                     true_net.is_dual = True
-                    true_net.draw(show=False, ax=ax[1], model=args.model, **args.draw_config)
+                    true_net.draw(show=False, ax=ax[1], model=args.model, **draw_config)
                 else:
-                    true_net.draw(show=False, ax=ax, seed=args.netseed, model=args.model, **args.draw_config)
-                display.display(fig, clear=animate)      
-                if draw == 2:
-                    plt.savefig(f"{output_path}-{sim_id}.pdf", bbox_inches='tight')
+                    true_net.draw(show=False, ax=ax, seed=args.netseed, model=args.model, **draw_config)
+                display.display(fig, clear=animate)
          
-        if not animate:
+        if (draw or draw_iter) and not animate:
+            plt.pause(2)
             plt.close()
 
         # call `agent.finish` if the agent exists and it has a `finish` method

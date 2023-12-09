@@ -32,5 +32,5 @@
     "logp_from_score": 1,
     "ckp_ep": 1,
     "ckp": 0,
-    "tb_log": 1
+    "tb_log": 0
 }

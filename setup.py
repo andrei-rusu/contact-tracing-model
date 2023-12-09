@@ -28,7 +28,9 @@ setup(
         'matplotlib', 
         'numpy', 
         'networkx',
+        'scipy',
         'tqdm',
+        'dill',
         'pandas',
     ],
     extras_require={
@@ -46,7 +48,7 @@ setup(
             'control_diffusion @ git+https://github.com/andrei-rusu/control-diffusion.git#egg=control_diffusion'
         ],
         'control_learn': [
-            'control_diffusion @ git+https://github.com/andrei-rusu/control-diffusion.git#egg=cotnrol_diffusion[learn]'
+            'control_diffusion @ git+https://github.com/andrei-rusu/control-diffusion.git#egg=control_diffusion[learn]'
         ],
         'mcmc': [
             'numpy==1.23.5',  # Specific version for the pymc3 functionality

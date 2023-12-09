@@ -56,8 +56,8 @@ The API supports Python calls from Jupyter Notebooks, using the same arguments:
 ```python
 from ct_simulator import run_tracing
 kwargs = {
-    'netsize':200, 'nettype':'barabasi', 'k':5, 'model':'covid', 'dual':2, 
-    'uptake':.5, 'overlap':.7, 'taut':.1, 'taur':.1, 'animate':0,
+    'netsize':200, 'nettype':'barabasi', 'k':10, 'model':'covid', 'dual':2, 
+    'first_inf':5, 'uptake':.5, 'overlap':.4, 'taut':.1, 'taur':.1, 'animate':0,
 }
 run_tracing.run_api(**kwargs)
 ```
@@ -69,7 +69,7 @@ import networkx as nx
 G = nx.fast_gnp_random_graph(200, p=.2, seed=5)
 kwargs = {
     'nettype': G, 'model':'covid', 'dual':2, 
-    'uptake':.5, 'overlap':.7, 'taut':.1, 'taur':.1, 'animate':0,
+    'first_inf':5, 'uptake':.5, 'overlap':.4, 'taut':.1, 'taur':.1, 'animate':0,
 }
 run_tracing.run_api(**kwargs)
 ```

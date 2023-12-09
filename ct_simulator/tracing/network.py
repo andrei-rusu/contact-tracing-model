@@ -1015,16 +1015,19 @@ class Network(nx.Graph):
         Returns:
             None
         """
+        if not path:
+            print('Warning: To use graphml, you must specify an output path. This could have happened because `draw` was not set to 2 in the Simulator.')
+            return None
         if not path.endswith('.graphml'):
-            path = f'{os.path.splitext(path)[0]}.graphml'
+            path = f'{os.path.splitext(path)[0]}-n{self.inet}-d{self.day}.graphml'
         for nid in self.nodes:
             self.nodes[nid]['label'] = self.node_states[nid]
             self.nodes[nid]['color'] = to_hex(colors[nid] if colors else STATES_COLOR_MAP[self.node_states[nid]])
         nx.write_graphml(self, path=path, **kwargs)
         
-    def draw(self, plotter='default', pos={}, figsize=(12, 10), show=True, ax=None, layout='spring_layout', seed=43, legend=0, with_labels=True, font_size=12, 
+    def draw(self, plotter='default', pos={}, figsize=(12, 10), dpi=150, show=True, ax=None, layout='spring_layout', seed=43, legend=0, with_labels=True, font_size=12, 
              font_color='white', title_fontsize=15, model='covid', node_size=300, degree_size=0, edge_color='gray', edge_width=.7, style='-', bgcolor='moccasin', 
-             margins=0, dual_custom=-1, states_color_map={}, layout_kwargs=dict(k=1.8, iterations=150), output_path='fig/graph', **kwargs):
+             margins=0, dual_custom=-1, states_color_map={}, layout_kwargs=dict(k=1.8, iterations=150), output_path=None, **kwargs):
         """
         Draw the Network object using networkx and matplotlib OR plotly OR pyvis.
 
@@ -1036,6 +1039,7 @@ class Network(nx.Graph):
                 - 'pyvis': display all network state information in one graph using pyvis.
             pos (dict): A dictionary with node positions as keys and positions as values. If None, a new layout is generated.
             figsize (tuple): Figure size in inches.
+            dpi (int): Dots per inch.
             show (bool): If True, display the plot upon calling this method.
             ax (matplotlib.axes.Axes, optional): A Matplotlib Axes instance to which the plot will be drawn. If None, fig and ax will be created here.
             layout (str): The layout algorithm to use. Default is 'spring_layout'.
@@ -1065,7 +1069,7 @@ class Network(nx.Graph):
         Returns:
             None
         """
-        dirname = os.path.dirname(output_path)
+        dirname = os.path.dirname(output_path) if output_path is not None else None
         if dirname and not os.path.exists(dirname):
             os.makedirs(dirname)
         # get the node state list
@@ -1165,7 +1169,7 @@ class Network(nx.Graph):
                 pos_scale = float(plotter.split(':')[1])
             except (ValueError, IndexError):
                 pos_scale = None
-            return self.draw_pyvis(graph, output_path=output_path, notebook=True, pos=pos, pos_scale=pos_scale, figsize=figsize, node_color=colors, node_size=node_size/25, 
+            return self.draw_pyvis(graph, output_path=output_path, notebook=True, pos=pos, pos_scale=pos_scale, figsize=figsize, dpi=dpi, node_color=colors, node_size=node_size/25, 
                                    with_labels=with_labels, font_size=font_size, font_color=font_color, edge_colors=edge_colors, edge_widths=edge_widths, bgcolor=bgcolor, 
                                    legend_config=legend_config, legend_fontsize=title_fontsize)
         elif 'plotly' in plotter:
@@ -1175,11 +1179,11 @@ class Network(nx.Graph):
                 pos_scale = float(plotter.split(':')[1])
             except (ValueError, IndexError):
                 pos_scale = None
-            return self.draw_plotly(graph, output_path=output_path, notebook=True, pos=pos, pos_scale=pos_scale, figsize=figsize, node_color=colors, node_size=node_size/15,
+            return self.draw_plotly(graph, output_path=output_path, notebook=True, pos=pos, pos_scale=pos_scale, figsize=figsize, dpi=dpi, node_color=colors, node_size=node_size/15,
                                     with_labels=with_labels, font_size=font_size, font_color=font_color, edge_colors=edge_colors, edge_widths=edge_widths, bgcolor=bgcolor, 
                                     legend_config=legend_config, legend_fontsize=title_fontsize)
         else:
-            if ax is None and figsize:
+            if ax is None:
                 _, ax = plt.subplots(figsize=figsize)
             
             # draw graph
@@ -1202,8 +1206,12 @@ class Network(nx.Graph):
                 smap = plt.cm.ScalarMappable(norm=norm_color, cmap=cmap)
                 self.cbar = plt.colorbar(smap, fraction=0.07, pad=0, orientation="horizontal", cax=self.cbar.ax if self.cbar else None)
 
-            # ax.margins(margins)
+            ax.margins(margins)
             ax.get_figure().set_facecolor(bgcolor)
+            if output_path:
+                if not output_path.endswith('.png'):
+                    output_path = f'{os.path.splitext(output_path)[0]}-n{self.inet}-d{self.day}.png'
+                plt.savefig(output_path, bbox_inches='tight', dpi=dpi)
             if show:
                 plt.show()
                 
@@ -1260,7 +1268,7 @@ class Network(nx.Graph):
         return self.pos
     
     def draw_plotly(self, graph=None, output_path='fig/graph.html', notebook=True, pos=None, pos_scale=1, node_color=None, node_size=10, with_labels=True, font_size=10, 
-                    font_color='white', edge_colors=None, edge_widths=None, legend_config=None, legend_fontsize=15, figsize=None, bgcolor='moccasin'):
+                    font_color='white', edge_colors=None, edge_widths=None, legend_config=None, legend_fontsize=15, figsize=None, dpi=150, bgcolor='moccasin'):
         """
         Draws a Network object in plotly.
 
@@ -1281,6 +1289,7 @@ class Network(nx.Graph):
             legend_config (list): A list of tuples containing the color and label for each legend item.
             legend_fontsize (int): The font size for legend elements.
             figsize (tuple): The size of the figure in inches (width, height). Default is None.
+            dpi (int): The dots per inch of the figure. Default is 150.
             bgcolor (str): The background color of the plot. Default is 'moccasin'.
 
         Returns:
@@ -1290,14 +1299,17 @@ class Network(nx.Graph):
             graph = self
         if pos_scale is None:
             pos_scale = 1
+        if not output_path:
+            print('Warning: To use plotly, you must specify an output path. This could have happened because `draw` was not set to 2 in the Simulator.')
+            return None
         if not output_path.endswith('.html'):
-            output_path = f'{os.path.splitext(output_path)[0]}.html'
+            output_path = f'{os.path.splitext(output_path)[0]}-n{self.inet}-d{self.day}.html'
         
         # import and get degree list for caption
         import plotly.graph_objects as go
         degrees = nx.degree(graph)
 
-        dpi = plt.rcParams['figure.dpi']
+        dpi = dpi if dpi else plt.rcParams['figure.dpi']
         height = width = None
         if figsize:
             height = figsize[1] * dpi
@@ -1427,7 +1439,7 @@ class Network(nx.Graph):
         return plotly_fig
     
     def draw_pyvis(self, graph=None, output_path='fig/graph.html', notebook=True, pos=None, pos_scale=200, node_color=None, node_size=10, with_labels=True, font_size=10, 
-                   font_color='white', edge_colors=None, edge_widths=None, legend_config=None, legend_fontsize=15, figsize=None, bgcolor='moccasin', show_buttons=False, 
+                   font_color='white', edge_colors=None, edge_widths=None, legend_config=None, legend_fontsize=15, figsize=None, dpi=150, bgcolor='moccasin', show_buttons=False, 
                    show_physics_buttons=True, pyvis_options=None):
         """
         This function accepts a networkx graph object, converts it to a pyvis network object preserving its node and edge attributes,
@@ -1469,15 +1481,18 @@ class Network(nx.Graph):
             graph = self
         if pos_scale is None:
             pos_scale = 200
+        if not output_path:
+            print('Warning: To use pyvis, you must specify an output path. This could have happened because `draw` was not set to 2 in the Simulator.')
+            return None
         if not output_path.endswith('.html'):
-            output_path = f'{os.path.splitext(output_path)[0]}.html'
+            output_path = f'{os.path.splitext(output_path)[0]}-n{self.inet}-d{self.day}.html'
 
         # local import and get degree list for caption
         from pyvis import network as pyvis_net
         degrees = nx.degree(graph)
         
         if self.pyvis_graph is None:
-            dpi = plt.rcParams['figure.dpi']
+            dpi = dpi if dpi else plt.rcParams['figure.dpi']
             height = width = None
             if figsize:
                 height = figsize[1] * dpi

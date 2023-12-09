@@ -183,8 +183,7 @@ PARAMETER_DEFAULTS = {
     ## if not 0, draw after each iteration and sleep for this long
     'draw_iter': 0.,
     ## drawing configuration: engine, layout, custom behavior for dual, labels etc.
-    'draw_config': {'plotter': 'default', 'layout': 'spring', 'legend': 0, 'with_labels': True,
-                    'output_path': 'fig/graph'},
+    'draw_config': {'plotter': 'default', 'layout': 'spring', 'legend': 0, 'with_labels': True, 'output_path': 'fig/graph'},
     
     #### Control-related parameters
     ## dict that is utilized to initialize a testing/tracing Agent
@@ -236,7 +235,7 @@ def main(args=None):
     # if `exp_id` does not end with '/', this signals that the user wants to use a nested folder structure, with the date as the last folder 
     if not args.exp_id.endswith('/'):
         args.save_path += f'/{time}'
-    args.draw_config['output_path'] = f"{args.save_path}/{args.draw_config.get('output_path', '')}"
+    args.draw_config['output_path'] = f"{args.save_path}/{args.draw_config.get('output_path', '')}" if args.draw == 2 else None
     if not args.animate:
         print(f'\nExperiment date: {time}')
     
