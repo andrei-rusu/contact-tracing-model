@@ -311,7 +311,7 @@ class EngineDual(Engine):
         draw_config_no_path = {k: v for k, v in draw_config.items() if k != 'output_path'}
         draw_plotter = draw_config.get('plotter', 'default')
         fontsize = draw_config.get('title_fontsize', 15)
-        figsize = draw_config.get('figsize', (10, 10))
+        figsize = draw_config.get('figsize', (8, 8))
         dpi = draw_config.get('dpi', 150)
         
         # If either of the drawing flag is enabled, instantiate drawing figure and axes, and draw initial state
@@ -958,7 +958,7 @@ class EngineOne(Engine):
         draw_config_no_path = {k: v for k, v in draw_config.items() if k != 'output_path'}
         draw_plotter = draw_config.get('plotter', 'default')
         fontsize = draw_config.get('title_fontsize', 15)
-        figsize = draw_config.get('figsize', (10, 10))
+        figsize = draw_config.get('figsize', (8, 8))
         dpi = draw_config.get('dpi', 150)
         
         # If either of the drawing flag is enabled, instantiate drawing figure and axes, and draw initial state

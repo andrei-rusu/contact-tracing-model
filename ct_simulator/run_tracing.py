@@ -183,7 +183,8 @@ PARAMETER_DEFAULTS = {
     ## if not 0, draw after each iteration and sleep for this long
     'draw_iter': 0.,
     ## drawing configuration: engine, layout, custom behavior for dual, labels etc.
-    'draw_config': {'plotter': 'default', 'layout': 'spring', 'legend': 0, 'with_labels': True, 'output_path': 'fig/graph'},
+    'draw_config': {'plotter': 'default', 'layout': 'spring', 'legend': 0, 'with_labels': True, 
+                    'figsize': (8, 8), 'dpi': 150, 'output_path': 'fig/graph'},
     
     #### Control-related parameters
     ## dict that is utilized to initialize a testing/tracing Agent
