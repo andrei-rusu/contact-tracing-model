@@ -272,13 +272,14 @@ run_tracing.run_api(**kwargs)
 ## controls printing information during the simulation and animation of the infection progress
 # -1 - args printed; 0 - full printing, 1 - print nothing, FORCE animate, >1 - no print, no animation unless `draw`!=0 supplied
 'animate': 0,
-## 0 - no draw, 1 - draw at start/finish, 2 - draw and save figure at finish
+## 0 - no draw; >0 draw first and last state, wait for that amount of time before proceeding (used for encouraging drawing completion)
+# special setting: 2 - also save all figures to files
 'draw': 0,
 ## if not 0, draw after each iteration and sleep for this long
 'draw_iter': 0.,
 ## drawing configuration: engine, layout, custom behavior for dual, labels etc.
-'draw_config': {'plotter': 'default', 'layout': 'spring', 'legend': 0, 'with_labels': True,
-                'output_path': 'fig/graph'},
+'draw_config': {'plotter': 'default', 'layout': 'spring', 'legend': 0, 'with_labels': True, 
+                'figsize': (8, 8), 'dpi': 150, 'output_path': 'fig/graph'},
 
 #### Control-related parameters
 ## dict that is utilized to initialize a testing/tracing Agent

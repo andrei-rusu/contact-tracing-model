@@ -316,11 +316,9 @@ class Network(nx.Graph):
             typ = 'config'
             # the possible degree range will be from 1 to max_degree (controlled via k, but cannot be larger than n - 1)
             deg_range = range(1, min(int(k) + 1, n))
-            print(norm_w, power_w, power_a, max(deg_range))
             p = np.fromiter((norm_w * dist.pdf(i) + power_w * i ** (-power_a) for i in deg_range), dtype=float)
             p /= p.sum()
             deg_sequence = np.random.RandomState(seed).choice(deg_range, size=n, replace=True, p=p)
-            print(sum(deg_sequence))
             if sum(deg_sequence) % 2:
                 deg_sequence[0] += 1
                 
