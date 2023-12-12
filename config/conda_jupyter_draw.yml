@@ -1,0 +1,20 @@
+name: contact
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - conda
+  - matplotlib
+  - numpy
+  - networkx
+  - scipy
+  - tqdm
+  - dill
+  - pandas
+  - ipython
+  - pygraphviz
+  - plotly
+  - pyvis
+  - imageio
+  - jupyterlab

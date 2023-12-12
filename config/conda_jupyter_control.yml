@@ -1,0 +1,25 @@
+name: control
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - conda
+  - matplotlib
+  - numpy
+  - networkx
+  - scipy
+  - tqdm
+  - dill
+  - pandas
+  - ipython
+  - pygraphviz
+  - plotly
+  - pyvis
+  - imageio
+  - jupyterlab
+  - pytorch
+  - pytorch-cuda=12.1
+  - pyg

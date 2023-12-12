@@ -1,4 +1,5 @@
 import random
+import warnings
 import numpy as np
 import dill
 import matplotlib.pyplot as plt
@@ -338,7 +339,9 @@ class EngineDual(Engine):
             
                 display.display(fig, clear=animate)
             if not draw_iter:
-                plt.pause(.5)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    plt.pause(draw)
 
         # simulation objects
         sim_true = true_net.get_simulator(trans_true, already_exp=samp_already_exp, **args_dict)
@@ -658,7 +661,6 @@ class EngineDual(Engine):
                         # print(f'Vaccinated at {control_day}', vax_history[control_day])
                         if control_day >= control_immunity_delay:
                             vaxed_immune = vax_history[control_day - control_immunity_delay]
-                            # print(control_day, vaxed_immune)
                             for nid in vaxed_immune:
                                 if not know_net.node_traced[nid]:
                                     state = node_states[nid]
@@ -692,7 +694,9 @@ class EngineDual(Engine):
             
             # draw network at the end of each inner state if option selected
             if draw_iter:
-                plt.pause(draw_iter)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    plt.pause(draw_iter)
                 print('State after events iteration ' + str(i) + ':')
                 if 'pyvis' in draw_plotter or 'plotly' in draw_plotter:
                     display.display(true_net.draw(seed=args.netseed, model=args.model, **draw_config), clear=animate)
@@ -844,7 +848,9 @@ class EngineDual(Engine):
                 display.display(fig, clear=animate)
             
         if (draw or draw_iter) and not animate:
-            plt.pause(2)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                plt.pause(draw)
             plt.close()
 
         # call `agent.finish` if the agent exists and it has a `finish` method
@@ -970,7 +976,6 @@ class EngineOne(Engine):
             else:
                 if draw_plotter == 'default':
                     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=figsize, dpi=dpi)
-                    print(fig.get_dpi(), fig.get_size_inches())
                     ax[0].set_title('Infection Progress', fontsize=fontsize)
                     true_net.is_dual = False
                     true_net.draw(seed=args.netseed, show=False, ax=ax[0], **draw_config_no_path)
@@ -984,7 +989,9 @@ class EngineOne(Engine):
                     
                 display.display(fig, clear=animate)
             if not draw_iter:
-                plt.pause(.5)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    plt.pause(draw)
             
         # set the dual flag such that true_net can be interpreted as the tracing network
         true_net.is_dual = True
@@ -1331,7 +1338,9 @@ class EngineOne(Engine):
             m['totalFalseNegative'] = m['totalInfectious'] - (m['totalTraced'] - m['totalFalseTraced'] - m['totalExposedTraced'])
             
             if draw_iter:
-                plt.pause(draw_iter)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    plt.pause(draw_iter)
                 print('State after events iteration ' + str(i) + ':')
                 if 'pyvis' in draw_plotter or 'plotly' in draw_plotter:
                     display.display(true_net.draw(seed=args.netseed, model=args.model, **draw_config), clear=animate)
@@ -1453,7 +1462,9 @@ class EngineOne(Engine):
                 display.display(fig, clear=animate)
          
         if (draw or draw_iter) and not animate:
-            plt.pause(2)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                plt.pause(draw)
             plt.close()
 
         # call `agent.finish` if the agent exists and it has a `finish` method

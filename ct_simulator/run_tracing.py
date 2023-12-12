@@ -178,7 +178,8 @@ PARAMETER_DEFAULTS = {
     ## controls printing information during the simulation and animation of the infection progress
     # -1 - args printed; 0 - full printing, 1 - print nothing, FORCE animate, >1 - no print, no animation unless `draw`!=0 supplied
     'animate': 0,
-    ## 0 - no draw, 1 - draw at start/finish, 2 - draw and save figure at finish
+    ## 0 - no draw; >0 draw first and last state, wait for that amount of time before proceeding (used for encouraging drawing completion)
+    # special setting: 2 - also save all figures to files
     'draw': 0,
     ## if not 0, draw after each iteration and sleep for this long
     'draw_iter': 0.,
@@ -236,7 +237,6 @@ def main(args=None):
     # if `exp_id` does not end with '/', this signals that the user wants to use a nested folder structure, with the date as the last folder 
     if not args.exp_id.endswith('/'):
         args.save_path += f'/{time}'
-    args.draw_config['output_path'] = f"{args.save_path}/{args.draw_config.get('output_path', '')}" if args.draw == 2 else None
     if not args.animate:
         print(f'\nExperiment date: {time}')
     
@@ -346,9 +346,14 @@ def main(args=None):
         args.draw = args.draw_iter = 0
     # otherwise, if animation of the infection progress is selected, disable all prints and enable both draw types
     elif args.animate == 1:
-        if not args.draw: args.draw = 1
-        # if no draw_iter selected, set the sleep time between iters to 1
-        if not args.draw_iter: args.draw_iter = .5
+        if not args.draw:
+            # if the plotter is one that writes to a file, we need to set args.draw to 2
+            plotter = args.draw_config.get('plotter', 'default')
+            args.draw = 1 if 'pyvis' not in plotter and 'plotly' not in plotter else 2
+        # if no draw_iter selected, set the sleep time between iters to .5
+        if not args.draw_iter: 
+            args.draw_iter = .5
+    args.draw_config['output_path'] = f"{args.save_path}/{args.draw_config.get('output_path', '')}" if args.draw == 2 else None
 
     # if no dual, this means the tracing network effectively has full overlap, while the second tracing network is disabled
     if not args.dual:
