@@ -2,6 +2,7 @@ name: control
 channels:
   - pytorch
   - nvidia
+  - pyg
   - conda-forge
   - defaults
 dependencies:
@@ -20,6 +21,9 @@ dependencies:
   - pyvis
   - imageio
   - jupyterlab
+  - scikit-learn
   - pytorch
   - pytorch-cuda=12.1
+  - pytorch-sparse
+  - pytorch-scatter
   - pyg
