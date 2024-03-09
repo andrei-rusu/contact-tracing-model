@@ -1,0 +1,64 @@
+
+[project]
+name = "ct_simulator"
+version = "0.2.0"
+description = "A Python package that can simulate the effects of various contact tracing strategies on the spread of viruses."
+readme = "README.md"
+authors = [
+    {name = "Andrei C. Rusu (andrei-rusu)"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.9",
+    "Topic :: Software Development :: Libraries",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "dill",
+    "matplotlib",
+    "networkx",
+    "numpy",
+    "pandas",
+    "scipy",
+    "tqdm",
+    "ct-simulator @ file:///${PROJECT_ROOT}/dist/ct_simulator-0.2.0-py3-none-any.whl",
+]
+license = {text = "MIT"}
+
+[project.urls]
+Homepage = "https://github.com/andrei-rusu/contact-tracing-model"
+"Bug Tracker" = "https://github.com/andrei-rusu/contact-tracing-model/issues"
+
+[project.optional-dependencies]
+draw = [
+    "ipython",
+]
+draw_full = [
+    "imageio",
+    "ipython",
+    "plotly",
+    "pygraphviz",
+    "pyvis",
+]
+control = [
+    "control_diffusion @ git+https://github.com/andrei-rusu/control-diffusion.git#egg=control_diffusion",
+]
+control_learn = [
+    "control_diffusion @ git+https://github.com/andrei-rusu/control-diffusion.git#egg=control_diffusion[learn]",
+]
+mcmc = [
+    "arviz==0.14.0",
+    "numpy==1.23.5",
+    "pymc3",
+    "theano-pymc",
+]
+
+[project.scripts]
+run-tracing = "ct_simulator.run_tracing:main"
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
