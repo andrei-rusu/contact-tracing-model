@@ -1128,16 +1128,12 @@ class ListDelegator(list):
     This class allows one to call a method on all elements of the list at once.
     If any of the elements do not have the method, an AttributeError is raised.
 
-    Attributes:
-        args_list (tuple): A tuple of additional arguments to be passed to the list constructor.
-
     Methods:
         __getattr__(self, method_name): Delegates method calls to the elements of the list.
         draw(self, *args, ax=[None, None], **kw): Calls the 'draw' method on the first two elements of the list.
     """    
-    def __init__(self, *args, args_list=()):
-        all_args = args + tuple(args_list)
-        list.__init__(self, all_args)
+    def __init__(self, *args):
+        list.__init__(self, args)
 
     def __getattr__(self, method_name):
         if self and hasattr(self[0], method_name):
